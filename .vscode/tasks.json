@@ -1,0 +1,141 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "shell",
+      "label": "Build",
+      "command": "source",
+      "args": [
+        "${workspaceFolder}/.venv/bin/activate",
+        "&&",
+        "west",
+        "build",
+        "-d",
+        "build",
+        "${workspaceFolder}/samples/https_init",
+        "${input:build-opts}"
+      ],
+      "options": {
+        "env": {
+          "BOARD": "native_sim/native/64",
+          "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr"
+        }
+      },
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "detail": "west build samples/https_init (swap BOARD/sample as needed)"
+    },
+    {
+      "type": "shell",
+      "label": "Load image via bootloader",
+      "command": "newtmgr",
+      "args": [
+        "-c",
+        "serial",
+        "image",
+        "upload",
+        "${workspaceFolder}/build/https_init/zephyr/zephyr.signed.bin",
+        "-e"
+      ],
+      "options": {},
+      "group": {
+        "kind": "test"
+      },
+      "detail": "newtmgr image upload",
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "label": "Serial Monitor",
+      "command": "source",
+      "args": [
+        "${workspaceFolder}/.venv/bin/activate",
+        "&&",
+        "pyserial-miniterm",
+        "-f",
+        "colorize",
+        "/dev/ttyUSB0",
+        "1000000"
+      ],
+      "options": {},
+      "group": "test",
+      "detail": "pyserial-minimonitor",
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "label": "West Flash",
+      "command": "source",
+      "args": [
+        "${workspaceFolder}/.venv/bin/activate",
+        "&&",
+        "west",
+        "flash",
+        "--skip-rebuild",
+        "-r",
+        "nrfutil",
+        "--erase",
+        "--softreset"
+      ],
+      "options": {},
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "detail": "west flash -r nfrutil",
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "label": "West Flash and Monitor",
+      "dependsOn": [
+        "West Flash",
+        "Serial Monitor"
+      ],
+      "dependsOrder": "sequence",
+      "command": "pwd",
+      "args": [],
+      "options": {},
+      "group": "test",
+      "detail": "west flash && serial monitor",
+      "problemMatcher": []
+    },
+    {
+      "type": "shell",
+      "label": "Build AT Client",
+      "command": "source",
+      "args": [
+        "${workspaceFolder}/.venv/bin/activate",
+        "&&",
+        "west",
+        "build",
+        "${workspaceFolder}/nrf/samples/cellular/at_client",
+        "-p"
+      ],
+      "options": {
+        "env": {
+          "BOARD": "circuitdojo_feather/nrf9160/ns",
+          "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr"
+        }
+      },
+      "problemMatcher": [],
+      "group": "build",
+      "detail": "Build AT Client"
+    },
+  ],
+  "inputs": [
+    {
+      "id": "build-opts",
+      "type": "pickString",
+      "description": "Build options",
+      "options": [
+        "",
+        "--pristine",
+        "--force"
+      ]
+    }
+  ]
+}

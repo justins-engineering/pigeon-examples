@@ -1,0 +1,50 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Cortex Debug App",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceRoot}/build/zephyr/zephyr.elf",
+      "request": "launch",
+      "type": "cortex-debug",
+      "runToEntryPoint": "main",
+      "servertype": "jlink",
+      "device": "nrf9160_xxAA",
+      "interface": "swd",
+      "rtos": "Zephyr",
+      "showDevDebugOutput": "vscode",
+      "toolchainPrefix": "arm-zephyr-eabi",
+      "armToolchainPath": "${userHome}/.local/zephyr-sdk-0.17.4/arm-zephyr-eabi/bin/"
+    },
+    {
+      "name": "Cortex Debug MCUboot",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceRoot}/build/mcuboot/zephyr/zephyr.elf",
+      "request": "launch",
+      "type": "cortex-debug",
+      "runToEntryPoint": "main",
+      "servertype": "jlink",
+      "device": "nrf9160_xxAA",
+      "interface": "swd",
+      "rtos": "Zephyr",
+      "showDevDebugOutput": "vscode",
+      "toolchainPrefix": "arm-zephyr-eabi",
+      "armToolchainPath": "${userHome}/.local/zephyr-sdk-0.17.4/arm-zephyr-eabi/bin/"
+    },
+    {
+      "name": "nRF9151 • App (Non-Secure)",
+      "type": "probe-rs-debug",
+      "request": "attach",
+      "chip": "nRF9151_xxAA",
+      "cwd": "${workspaceFolder}",
+      "speed": 4000,
+      "coreConfigs": [
+        {
+          "coreIndex": 0,
+          "programBinary": "${workspaceFolder}/build/https_init/zephyr/zephyr.elf"
+        }
+      ],
+      "consoleLogLevel": "Console"
+    }
+  ]
+}

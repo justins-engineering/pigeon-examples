@@ -1,0 +1,6 @@
+[manifest]
+path = samples
+file = west.yml
+
+[zephyr]
+base = zephyr

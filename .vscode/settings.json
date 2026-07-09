@@ -1,0 +1,28 @@
+{
+  "files.associations": {
+    "log-*.txt": "ansi",
+    "*.conf": "kconfig"
+  },
+  "files.watcherExclude": {
+    "**/.venv/**": true,
+    "**/.git/objects/**": true,
+    "**/node_modules/**": true,
+    "./bootloader/**": true
+  },
+  "search.exclude": {
+    "**/build": true
+  },
+  "python.defaultInterpreterPath": "${workspaceRoot}/.venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+  "editor.formatOnSave": true,
+  "editor.formatOnSaveMode": "modificationsIfAvailable",
+  "cortex-debug.enableTelemetry": false,
+  "kconfig.zephyr.base": "${zephyrBase}",
+  "cortex-debug.variableUseNaturalFormat": true,
+  "clangd.arguments": [
+    "--compile-commands-dir=${workspaceFolder}/build/https_init",
+    "--completion-style=detailed",
+    "--header-insertion=never",
+    "--malloc-trim"
+  ]
+}
