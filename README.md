@@ -1,6 +1,6 @@
 # pigeon-examples
 
-Zephyr/nRF Connect SDK sample applications for [`pigeon`](https://github.com/) (the
+Zephyr/nRF Connect SDK sample applications for [`pigeon`](https://github.com/justins-engineering/pigeon) (the
 PidgeIoT device client library, checked out as a sibling directory at `../pigeon`
 and pulled in as a west module via `samples/pigeon_module.cmake`).
 
