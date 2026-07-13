@@ -29,6 +29,7 @@ log*.txt
 /modules/
 /bootloader/
 /zephyr/
+/pigeon/
 
 # Pristine reference copy of the original Nordic NIDD sample this workspace
 # was bootstrapped from — kept on disk locally, not part of this repo.

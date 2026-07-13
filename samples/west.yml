@@ -26,10 +26,16 @@ manifest:
           - picolibc
           - qcbor
           - segger
+          - tf-psa-crypto
           - tinycrypt
           - trusted-firmware-m
           - zcbor
           - zephyr
+
+    - name: pigeon
+      url: https://github.com/justins-engineering/pigeon
+      revision: main
+      path: pigeon
 
   self:
     path: samples

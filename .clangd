@@ -6,3 +6,4 @@ CompileFlags:
     - --param*
     - -fno-printf-return-value
     - -mfp16-format=ieee
+    - -fno-freestanding
