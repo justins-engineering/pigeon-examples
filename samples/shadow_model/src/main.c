@@ -12,17 +12,11 @@ LOG_MODULE_REGISTER(shadow_model, LOG_LEVEL_INF);
  * the values a real sync would send/receive.
  */
 int main(void) {
+  /* Endpoint and token come from CONFIG_PIGEON_ENDPOINT/CONFIG_PIGEON_TOKEN
+   * (see prj.conf) instead of this struct. */
   struct pigeon_config config = {
       .device_id = "demo-pigeon-0003",
-      .connector =
-          {
-              .type = PIGEON_CONNECTOR_HTTPS,
-              .cfg.https =
-                  {
-                      .endpoint = "https://api.pidgeiot.com/device/pigeons/demo-pigeon-0003",
-                      .token = "replace-with-device-jwt",
-                  },
-          },
+      .connector = {.type = PIGEON_CONNECTOR_HTTPS},
   };
 
   int err = pigeon_init(&config);

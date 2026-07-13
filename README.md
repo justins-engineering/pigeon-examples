@@ -15,7 +15,8 @@ samples/
   west.yml              # west manifest (self path: samples)
   pigeon_module.cmake    # shared: wires ../../pigeon in via ZEPHYR_EXTRA_MODULES
   https_init/             # pigeon_init() with an HTTPS connector
-  coap_init/              # pigeon_init() with a CoAP connector (DTLS PSK fields)
+  coap_tcp_init/          # pigeon_init() with a CoAP-over-TLS/TCP connector
+                           # (TLS PSK fields; no on-device UDP support yet)
   shadow_model/           # builds pigeon_shadow_doc / pigeon_shadow_update_request
                            # structs and logs them (no transport yet)
 ```
@@ -43,7 +44,7 @@ west build -d build samples/https_init -b native_sim/native/64
 ./build/https_init/zephyr/zephyr.exe
 ```
 
-Swap `samples/https_init` for `samples/coap_init` or `samples/shadow_model`, and
+Swap `samples/https_init` for `samples/coap_tcp_init` or `samples/shadow_model`, and
 `-b native_sim/native/64` for a real board (e.g. `circuitdojo_feather/nrf9160/ns`)
 when flashing hardware.
 
