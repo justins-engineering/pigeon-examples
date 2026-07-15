@@ -6,36 +6,19 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/net/conn_mgr_connectivity.h>
 #include <zephyr/net/conn_mgr_monitor.h>
-
-#ifdef CONFIG_MODEM_KEY_MGMT
-#include <modem/modem_key_mgmt.h>
-#endif
+#include <zephyr/net/net_if.h>
 
 /* conn_mgr_all_if_down() only sends CFUN=20 (deactivate LTE), which the modem
- * does NOT count as a graceful shutdown for its reset-loop protection (that
- * requires CFUN=0 / LTE_LC_FUNC_MODE_POWER_OFF -- see
+ * does NOT count as a graceful shutdown for its reset-loop protection (see
  * LTE_LC_MODEM_EVT_RESET_LOOP's doc comment in modem/lte_lc.h). Repeated
  * ungraceful resets (e.g. during development, reflashing without powering
  * off first) make the modem refuse to attach for the next 30 minutes, so
- * lte_disconnect() below explicitly powers off afterward too. */
+ * lte_disconnect() below explicitly powers off afterward too. Mirrors
+ * https_init's connection_manager.c, where this pattern originates -- see
+ * this repo's CLAUDE.md "Modem reset safety" note. */
 #define LTE_CONNECT_TIMEOUT K_SECONDS(120)
 
-#ifdef CONFIG_NET_SOCKETS_SOCKOPT_TLS
-#include <zephyr/net/net_if.h>
-#include <zephyr/net/tls_credentials.h>
-#endif
-
 LOG_MODULE_REGISTER(connection_manager);
-
-static const char ca_cert[] = {
-#include "GTS_Root_R4.crt.hex"
-    // Null terminate certificate if running Mbed TLS
-    IF_ENABLED(CONFIG_TLS_CREDENTIALS, (0x00))
-};
-
-#if CONFIG_MODEM_KEY_MGMT
-BUILD_ASSERT(sizeof(ca_cert) < KB(4), "Certificates too large");
-#endif
 
 /* Macros used to subscribe to specific Zephyr NET management events. */
 #define L4_EVENT_MASK (NET_EVENT_L4_CONNECTED | NET_EVENT_L4_DISCONNECTED)
@@ -48,57 +31,6 @@ K_SEM_DEFINE(network_connection_sem, 0, 1);
 /* Zephyr NET management event callback structures. */
 static struct net_mgmt_event_callback l4_cb;
 static struct net_mgmt_event_callback conn_cb;
-
-/* Provision certificate to modem. sec_tag is nrf_sec_tag_t on nRF91 targets
- * and sec_tag_t on native_sim/other boards; both are plain integer typedefs,
- * so this stays untyped in the signature to build under either config. */
-static int provision_cert(int sec_tag, const char cert[], size_t cert_len) {
-  int err;
-
-#ifdef CONFIG_MODEM_KEY_MGMT
-  bool exists;
-  int mismatch;
-
-  err = modem_key_mgmt_exists(sec_tag, MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN, &exists);
-  if (err) {
-    LOG_ERR("Failed to check for certificates err %d", err);
-    return err;
-  }
-
-  if (exists) {
-    mismatch = modem_key_mgmt_cmp(sec_tag, MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN, cert, cert_len);
-    if (!mismatch) {
-      LOG_INF("Certificate match");
-      return 0;
-    }
-
-    LOG_INF("Certificate mismatch");
-    err = modem_key_mgmt_delete(sec_tag, MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN);
-    if (err) {
-      LOG_ERR("Failed to delete existing certificate, err %d", err);
-    }
-  }
-
-  LOG_INF("Provisioning certificate");
-
-  /*  Provision certificate to the modem */
-  err = modem_key_mgmt_write(sec_tag, MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN, cert, cert_len);
-  if (err) {
-    LOG_ERR("Failed to provision certificate, err %d", err);
-    return err;
-  }
-#else  /* CONFIG_MODEM_KEY_MGMT */
-  err = tls_credential_add(sec_tag, TLS_CREDENTIAL_CA_CERTIFICATE, ca_cert, sizeof(ca_cert));
-  if (err == -EEXIST) {
-    LOG_INF("CA certificate already exists, sec tag: %d", sec_tag);
-  } else if (err < 0) {
-    LOG_ERR("Failed to register CA certificate: %d", err);
-    return err;
-  }
-#endif /* !CONFIG_MODEM_KEY_MGMT */
-
-  return 0;
-}
 
 static void on_net_event_l4_disconnected(void) { LOG_INF("Disconnected from the network"); }
 
@@ -143,17 +75,13 @@ int lte_connect(void) {
 
   LOG_INF("Bringing network interface up");
 
-  /* Connecting to the configured connectivity layer. */
+  /* Connecting to the configured connectivity layer. PSK credentials for the
+   * CoAP-over-TLS/TCP connector are registered by pigeon_coap.c itself (from
+   * pigeon_init()'s config), not provisioned here -- unlike https_init, this
+   * sample has no CA cert to provision up front. */
   err = conn_mgr_all_if_up(true);
   if (err) {
     LOG_ERR("conn_mgr_all_if_up, error: %d", err);
-    return err;
-  }
-
-  /* Provision certificates before connecting to the network */
-  err = provision_cert(JES_SEC_TAG, ca_cert, sizeof(ca_cert));
-  if (err) {
-    LOG_ERR("Failed to provision TLS certificate. TLS_SEC_TAG: %d", JES_SEC_TAG);
     return err;
   }
 
@@ -174,9 +102,8 @@ int lte_connect(void) {
 
   /* Bounded, not K_FOREVER: if the network never attaches (no coverage, or
    * the modem's own reset-loop protection is currently restricting attach
-   * attempts -- see the comment on LTE_CONNECT_TIMEOUT above), give up and
-   * power the modem off gracefully instead of hanging forever and forcing
-   * an ungraceful external reset, which would only extend that restriction. */
+   * attempts), give up and power the modem off gracefully instead of hanging
+   * forever and forcing an ungraceful external reset. */
   err = k_sem_take(&network_connection_sem, LTE_CONNECT_TIMEOUT);
   if (err) {
     LOG_ERR("Timed out waiting for network connectivity: %d", err);
@@ -193,7 +120,6 @@ int lte_disconnect(void) {
   /* A small delay for the TCP connection teardown */
   k_sleep(K_SECONDS(1));
 
-  /* The HTTP transaction is done, take the network connection down */
   err = conn_mgr_all_if_disconnect(true);
   if (err) {
     LOG_ERR("conn_mgr_all_if_disconnect, error: %d", err);
