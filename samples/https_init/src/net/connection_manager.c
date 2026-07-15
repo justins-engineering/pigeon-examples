@@ -1,6 +1,7 @@
 /** @headerfile connection_manager.h */
 #include "connection_manager.h"
 
+#include <modem/lte_lc.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/conn_mgr_connectivity.h>
@@ -9,6 +10,15 @@
 #ifdef CONFIG_MODEM_KEY_MGMT
 #include <modem/modem_key_mgmt.h>
 #endif
+
+/* conn_mgr_all_if_down() only sends CFUN=20 (deactivate LTE), which the modem
+ * does NOT count as a graceful shutdown for its reset-loop protection (that
+ * requires CFUN=0 / LTE_LC_FUNC_MODE_POWER_OFF -- see
+ * LTE_LC_MODEM_EVT_RESET_LOOP's doc comment in modem/lte_lc.h). Repeated
+ * ungraceful resets (e.g. during development, reflashing without powering
+ * off first) make the modem refuse to attach for the next 30 minutes, so
+ * lte_disconnect() below explicitly powers off afterward too. */
+#define LTE_CONNECT_TIMEOUT K_SECONDS(120)
 
 #ifdef CONFIG_NET_SOCKETS_SOCKOPT_TLS
 #include <zephyr/net/net_if.h>
@@ -162,7 +172,17 @@ int lte_connect(void) {
     conn_mgr_mon_resend_status();
   }
 
-  k_sem_take(&network_connection_sem, K_FOREVER);
+  /* Bounded, not K_FOREVER: if the network never attaches (no coverage, or
+   * the modem's own reset-loop protection is currently restricting attach
+   * attempts -- see the comment on LTE_CONNECT_TIMEOUT above), give up and
+   * power the modem off gracefully instead of hanging forever and forcing
+   * an ungraceful external reset, which would only extend that restriction. */
+  err = k_sem_take(&network_connection_sem, LTE_CONNECT_TIMEOUT);
+  if (err) {
+    LOG_ERR("Timed out waiting for network connectivity: %d", err);
+    lte_disconnect();
+    return err;
+  }
 
   return 0;
 }
@@ -182,6 +202,32 @@ int lte_disconnect(void) {
   err = conn_mgr_all_if_down(true);
   if (err) {
     LOG_ERR("conn_mgr_all_if_down, error: %d", err);
+  }
+
+  /* conn_mgr_all_if_down() only sends CFUN=20 (deactivate LTE); explicitly
+   * power off (CFUN=0) so the modem counts this as a graceful shutdown and
+   * doesn't arm its reset-loop protection on the next boot. Only a
+   * successful CFUN=0 counts, so this is retried rather than logged and
+   * ignored on failure. */
+  LOG_INF("Powering off modem");
+
+  int power_off_err = -EAGAIN;
+
+  for (int attempt = 1; attempt <= 3 && power_off_err; attempt++) {
+    /* CFUN=20 above may still be completing asynchronously; give the AT
+     * command queue time to clear before the next CFUN request, and back
+     * off further between retries. */
+    k_sleep(K_SECONDS(attempt));
+
+    power_off_err = lte_lc_power_off();
+    if (power_off_err) {
+      LOG_WRN("lte_lc_power_off attempt %d/3 failed: %d", attempt, power_off_err);
+    }
+  }
+
+  if (power_off_err) {
+    LOG_ERR("lte_lc_power_off, error: %d (modem may not be gracefully off)", power_off_err);
+    return err ? err : power_off_err;
   }
 
   return err;
