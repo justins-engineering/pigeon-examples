@@ -32,10 +32,10 @@ manifest:
           - zcbor
           - zephyr
 
-    - name: pigeon
-      url: https://github.com/justins-engineering/pigeon
-      revision: main
-      path: pigeon
+  # pigeon is intentionally not a west project: ./pigeon is a local symlink
+  # (see ../pigeon_module.cmake, which adds it to ZEPHYR_EXTRA_MODULES by
+  # physical path) to the primary pigeon dev checkout, so local edits there
+  # are picked up immediately without a push/west-update round trip.
 
   self:
     path: samples

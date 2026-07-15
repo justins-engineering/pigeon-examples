@@ -1,7 +1,8 @@
 {
   "files.associations": {
     "log-*.txt": "ansi",
-    "*.conf": "kconfig"
+    "*.conf": "kconfig",
+    "*.overlay": "devicetree"
   },
   "files.watcherExclude": {
     "**/.venv/**": true,

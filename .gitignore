@@ -14,6 +14,10 @@ log*.txt
 # Secret keys
 **/keys/private/*
 
+# Local Kconfig overrides (real device secrets); see samples/*/CMakeLists.txt
+# for the auto-merge-if-present logic.
+prj.local.conf
+
 # Python venv
 .venv/
 
@@ -29,7 +33,9 @@ log*.txt
 /modules/
 /bootloader/
 /zephyr/
-/pigeon/
+# No trailing slash: pigeon is a symlink to a local checkout, and a
+# trailing-slash pattern only matches real directories, not symlinks.
+/pigeon
 
 # Pristine reference copy of the original Nordic NIDD sample this workspace
 # was bootstrapped from — kept on disk locally, not part of this repo.
