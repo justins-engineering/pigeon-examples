@@ -1,0 +1,36 @@
+/* No hw-flow-control: this board's uart0_default pinctrl only routes TX/RX
+ * (see zephyr/boards/circuitdojo/feather/circuitdojo_feather_nrf9160_common-pinctrl.dtsi),
+ * no CTS/RTS pins. Enabling HW flow control with no CTS pin wired makes the
+ * UARTE hardware wait forever for CTS and silently blocks all TX. */
+&uart0 {
+  status = "okay";
+  compatible = "nordic,nrf-uarte";
+  current-speed = <1000000>;
+  pinctrl-0 = <&uart0_default>;
+  pinctrl-1 = <&uart0_sleep>;
+  pinctrl-names = "default", "sleep";
+};
+
+/* No custom flash partitioning here either: must stay in sync with
+ * ../../../boards/circuitdojo_feather_nrf9160_ns.overlay, which now also
+ * applies no partition overrides and relies on the board's stock internal
+ * flash layout (zephyr/dts/vendor/nordic/nrf91xx_partition.dtsi). */
+
+/ {
+  chosen {
+    /* Critical: MCUboot must link itself against boot_partition (0x0), not
+     * the board's default zephyr,code-partition (&slot0_partition, 0x10000).
+     * This used to live in ../app.overlay, but Zephyr's devicetree-overlay
+     * lookup (zephyr/cmake/modules/configuration_files.cmake) is a cascading
+     * fallback, not a merge: once a boards/<board>.overlay is found (this
+     * file), it NEVER falls through to check app.overlay too. Having both
+     * meant this override was silently never applied — MCUboot was flashed
+     * at 0x0 but linked/executing as if based at 0x10000, causing an
+     * immediate crash. Keep this override here, not in a separate app.overlay. */
+    zephyr,code-partition = &boot_partition;
+
+    zephyr,console = &uart0;
+    zephyr,shell-uart = &uart0;
+    zephyr,uart-mcumgr = &uart0;
+  };
+};
