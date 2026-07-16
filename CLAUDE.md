@@ -129,11 +129,14 @@ The most developed sample; treat it as the reference consumer of `pigeon`.
   runtime log filtering via `log_filter_set()`, `telemetry_interval` changes the shadow poll period,
   and `reboot` is a one-shot command (deliberately excluded from the persisted `current_config` so
   it doesn't refire every poll). `shadow_loop()` re-polls on the shadow's own `telemetry_interval`.
-  Each sync also calls `pigeon_set_shadow_param()`/`pigeon_shadow_flush()` (added to `pigeon` once
-  `pigeon_coap.c` landed, exposed identically by both transports) to report an `uptime_s` value back —
-  dovecote has no device-facing report-back route yet, so this is expected to fail and is logged at
-  INFO, not treated as an error; the point is exercising the client-side plumbing end-to-end (see
-  `~/pigeon/CLAUDE.md` for why the real endpoint doesn't exist yet).
+  Each sync also exercises both device→platform report paths, which dovecote now serves (as of
+  2026-07-15 — see `~/pigeon/CLAUDE.md` for the wire contract): `pigeon_set_shadow_param()`/
+  `pigeon_shadow_flush()` (shared `pigeon_core.c` plumbing over the per-transport
+  `pigeon_transport_report_shadow` hook) POSTs an `uptime_s` metric to `/telemetry`, and — only when
+  a new target was actually applied — `pigeon_shadow_report()` POSTs the applied `current_config` +
+  version back to `/shadow` to ack the config change. Distinct endpoints, distinct purposes:
+  telemetry is a latest-value-per-key metric store; the shadow report closes the config-convergence
+  loop (`current_version` is reported by the device, never re-derived server-side).
 - **`src/net/connection_manager.c`** — `lte_connect()`/`lte_disconnect()`, plus CA cert provisioning
   (`provision_cert()`, modem key storage via `modem_key_mgmt_*` on nRF91 targets since TLS there is
   socket-offloaded to the modem, or `tls_credential_add()` elsewhere). `lte_disconnect()` explicitly
@@ -156,8 +159,12 @@ work around or skip it when scripting flashes/tests.
 
 ### Other samples
 
-- **`coap_tcp_init`** — mirrors `https_init`'s structure (`src/shadow.c` is copied verbatim, since
-  the `pigeon.h` shadow API is transport-agnostic; `src/net/connection_manager.c` is the same LTE
+- **`coap_tcp_init`** — mirrors `https_init`'s structure (`src/shadow.c` is a copy, currently
+  lagging `https_init`'s by one step: it predates the `pigeon_shadow_report()` config-ack call,
+  which can't be mirrored here until `pigeon_coap.c` implements that function —
+  `pigeon_shadow_get`/`pigeon_shadow_report` are per-transport, unlike the shared
+  `pigeon_shadow_flush` plumbing. Re-sync it once CoAP grows the report path;
+  `src/net/connection_manager.c` is the same LTE
   bring-up/graceful-shutdown pattern, minus CA-cert provisioning since PSK credentials are registered
   by `pigeon_coap.c` itself from `pigeon_init()`'s config). `PIGEON_CONNECTOR_COAP`, speaking
   CoAP-over-TLS/TCP (`coaps+tcp://`). No sysbuild/MCUboot, so unlike `https_init` it builds for both
