@@ -48,12 +48,10 @@ static void set_all_log_levels(uint32_t level) {
   }
 }
 
-/* Exercises the device -> platform report path (pigeon_set_shadow_param() +
- * pigeon_shadow_flush(), added once pigeon_coap.c landed -- see pigeon's
- * CLAUDE.md). dovecote has no device-facing report-back route yet, so a
- * transport failure here is expected and logged at INFO rather than treated
- * as an error; the point is exercising the client-side plumbing end-to-end
- * so nothing else needs to change once that endpoint exists. */
+/* Reports uptime via the device telemetry path (pigeon_set_shadow_param() +
+ * pigeon_shadow_flush(), POSTing to <endpoint>/telemetry -- dovecote's
+ * report_telemetry_device, working as of 2026-07-15, see pigeon's CLAUDE.md).
+ * Unrelated to shadow config ack (see pigeon_shadow_report() below). */
 static void report_uptime(void) {
   char uptime_s[16];
 
@@ -66,7 +64,7 @@ static void report_uptime(void) {
   }
 
   if (err) {
-    LOG_INF("Shadow report-back not yet accepted by platform (expected): %d", err);
+    LOG_WRN("Telemetry report failed: %d", err);
   }
 }
 
@@ -136,6 +134,30 @@ int shadow_sync(void) {
       "Applied shadow v%d: log=%s telemetry_interval=%d", doc.target_version,
       current_config.log ? "true" : "false", current_config.telemetry_interval
   );
+
+  /* Confirm what was actually applied back to the platform (see pigeon's
+   * CLAUDE.md: dovecote's report_shadow_device now exists for this, closing
+   * the loop that used to be documented as a gap). current_version is the
+   * target_version we just applied, not re-derived from it server-side, so
+   * this must be sent even if the device is already catching up to a newer
+   * target by the time it lands. */
+  char report_buf[128];
+  int encode_err = json_obj_encode_buf(
+      app_shadow_config_descr, ARRAY_SIZE(app_shadow_config_descr), &current_config, report_buf,
+      sizeof(report_buf)
+  );
+
+  if (encode_err) {
+    LOG_ERR("Failed to encode current_config for shadow report: %d", encode_err);
+  } else {
+    int report_err = pigeon_shadow_report(doc.target_version, report_buf);
+
+    if (report_err) {
+      LOG_WRN("Shadow report-back failed: %d", report_err);
+    } else {
+      LOG_INF("Reported current_config back to platform at v%d", doc.target_version);
+    }
+  }
 
   /* Demonstrates command-via-shadow (see pigeon's CLAUDE.md: pidgeiot has no
    * formal generation-counter/command-ack model yet, only this raw

@@ -159,12 +159,10 @@ work around or skip it when scripting flashes/tests.
 
 ### Other samples
 
-- **`coap_tcp_init`** — mirrors `https_init`'s structure (`src/shadow.c` is a copy, currently
-  lagging `https_init`'s by one step: it predates the `pigeon_shadow_report()` config-ack call,
-  which can't be mirrored here until `pigeon_coap.c` implements that function —
-  `pigeon_shadow_get`/`pigeon_shadow_report` are per-transport, unlike the shared
-  `pigeon_shadow_flush` plumbing. Re-sync it once CoAP grows the report path;
-  `src/net/connection_manager.c` is the same LTE
+- **`coap_tcp_init`** — mirrors `https_init`'s structure (`src/shadow.c` is a copy, now back in
+  sync as of `pigeon`'s 82f5233 "Add pigeon_shadow_report() config-ack over HTTPS + CoAP":
+  `pigeon_coap.c` implements `pigeon_shadow_report()` too, so this sample's `shadow_sync()` calls
+  it after applying `target_config`, same as `https_init`'s. `src/net/connection_manager.c` is the same LTE
   bring-up/graceful-shutdown pattern, minus CA-cert provisioning since PSK credentials are registered
   by `pigeon_coap.c` itself from `pigeon_init()`'s config). `PIGEON_CONNECTOR_COAP`, speaking
   CoAP-over-TLS/TCP (`coaps+tcp://`). No sysbuild/MCUboot, so unlike `https_init` it builds for both
