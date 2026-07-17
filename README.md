@@ -76,3 +76,83 @@ The `../pigeon` repo's `.vscode/settings.json` points clangd at
 `build/https_init/compile_commands.json` here (via a `pigeon/build` symlink to
 this repo's `build/`), so keep `https_init` building under plain `build/` for
 IDE tooling to resolve `pigeon`'s includes.
+
+## Flashing `https_init` to real hardware
+
+This is the only sample that boots on and has been verified against a real
+device: a CircuitDojo nRF9160 Feather, over J-Link/`nrfutil`.
+
+### 1. Provision device credentials
+
+`pigeon_init()` needs a pigeon's endpoint + bearer token, which are real
+device secrets and must never be committed. They're supplied as
+`CONFIG_PIGEON_ENDPOINT`/`CONFIG_PIGEON_TOKEN`, baked in at compile time via
+`samples/https_init/prj.local.conf` (gitignored; auto-merged by
+`CMakeLists.txt` if present — see the `EXTRA_CONF_FILE` logic there). Create
+the pigeon first (dashboard or API), then write:
+
+```sh
+cat > samples/https_init/prj.local.conf <<'EOF'
+CONFIG_PIGEON_ENDPOINT="https://<backend-host>/device/pigeons/<pigeon-id>"
+CONFIG_PIGEON_TOKEN="<device-bearer-token>"
+EOF
+```
+
+Both values come back from the pigeon's `create`/`token/refresh` response —
+tokens are stripped from every other route, so this is the only chance to
+capture one (refreshing mints a new keypair and revokes the old token).
+
+`samples/https_init/src/main.c` also has a `config.device_id` field, hardcoded
+to a specific pigeon ID for logging purposes only (`pigeon_init()` never uses
+it to build a request — see the comment above it in `main.c`). It doesn't
+need to match `CONFIG_PIGEON_ENDPOINT` for the sample to work, but keeping it
+in sync avoids a misleading device ID in the boot log.
+
+### 2. Build and flash
+
+```sh
+source .venv/bin/activate
+west build -d build samples/https_init -b circuitdojo_feather/nrf9160/ns
+west flash --no-rebuild -r nrfutil --erase --softreset
+```
+
+(`.vscode/tasks.json` has the same flash command as the "West Flash" task,
+plus a "West Flash and Monitor" task that chains it with the serial monitor
+below.) Changing `prj.local.conf` requires a rebuild — the values are baked
+into the binary, not read at runtime.
+
+### 3. Watch the serial console
+
+The board enumerates a USB CDC serial port (`/dev/ttyUSB0` at 1000000 baud
+here; may differ per host):
+
+```sh
+source .venv/bin/activate
+pyserial-miniterm -f colorize /dev/ttyUSB0 1000000
+```
+
+Expected boot sequence on a working device + live backend:
+
+```
+*** Booting Pigeon v0.1.0-... ***
+*** Using nRF Connect SDK v3.4.0-... ***
+*** Using Zephyr OS v4.4.0-... ***
+<inf> connection_manager: Bringing network interface up
+<inf> connection_manager: Provisioning certificate
+<inf> connection_manager: Connecting to the network
+<inf> connection_manager: Network connectivity established and IP address assigned
+<inf> pigeon: Transport mapped to secure HTTPS edge pipeline: https://<backend-host>/device/pigeons/<pigeon-id>
+<inf> pigeon: Pigeon tracking instance ready: <device-id>
+<inf> shadow: Shadow fetched: target_version=N current_version=M updated_at=...
+<inf> pigeon: Flushed shadow param: uptime_s=...
+<inf> shadow: Next shadow poll in 60 s
+```
+
+"Flushed shadow param: uptime_s=..." is telemetry, not a shadow report,
+despite the log line's name — see the comment above `pigeon_shadow_flush()`
+in `shadow.c`; it's a `pigeon_set_shadow_param()` + `pigeon_shadow_flush()`
+pair that POSTs to `<endpoint>/telemetry`. A device only POSTs a shadow
+*report* (`pigeon_shadow_report()`) when `target_version` fetched from the
+shadow differs from `current_version` — with nothing new targeted, you'll
+instead see `shadow: Shadow already converged at version N; nothing to
+apply`, which is expected, not a failure.
