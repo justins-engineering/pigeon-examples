@@ -157,3 +157,79 @@ pair that POSTs to `<endpoint>/telemetry`. A device only POSTs a shadow
 shadow differs from `current_version` — with nothing new targeted, you'll
 instead see `shadow: Shadow already converged at version N; nothing to
 apply`, which is expected, not a failure.
+
+## Decoding uploaded device logs (`CONFIG_PIGEON_LOG_UPLOAD`)
+
+`https_init`'s `prj.conf` turns on `pigeon`'s opt-in remote-logging backend
+(`CONFIG_PIGEON_LOG_UPLOAD`, see `~/pigeon/zephyr/Kconfig` and
+`src/pigeon_log_backend.c`): a background ring buffer captures this device's
+own log output via Zephyr's **dictionary-based logging**
+(`CONFIG_LOG_DICTIONARY_SUPPORT`, selected automatically) and flushes it in
+batches as a raw `application/octet-stream` POST to
+`<CONFIG_PIGEON_ENDPOINT>/logs` (`pigeon_transport_upload_logs()` in
+`pigeon_https.c`), device-authenticated the same way as the telemetry/shadow
+reports. The win is that log **format strings never ship in the firmware
+image or over the air** — each record on the wire is just a source id,
+level, timestamp, and packed arguments — so decoding it back into readable
+text needs a side-channel lookup table, not just the raw bytes.
+
+### The dictionary database is a per-build artifact
+
+Enabling `CONFIG_PIGEON_LOG_UPLOAD` makes every `west build` of `https_init`
+emit `build/https_init/zephyr/log_dictionary.json` — the source-id-to-string
+mapping for *that exact build*. It never leaves the host (it isn't flashed,
+isn't uploaded, isn't part of the firmware image), and it doesn't carry over
+between builds: rebuilding regenerates it, and a chunk uploaded by one build
+can only be decoded with that same build's `log_dictionary.json`, not a
+newer or older one. Keep the database alongside whatever firmware version
+you flashed if you'll want to decode its logs later — there's no version tag
+tying an uploaded chunk back to a specific `log_dictionary.json` other than
+you keeping track yourself.
+
+### Getting a raw chunk to decode
+
+What lands at `<CONFIG_PIGEON_ENDPOINT>/logs` is exactly what
+`pigeon_log_backend.c` drained from its ring buffer — a raw binary stream of
+concatenated dictionary log records, no JSON envelope, no batching framing
+of its own beyond that concatenation. However you capture one server-side
+(the staging `/device/pigeons/:id/logs` route is still landing on the
+backend as of this writing — see `~/pigeon/CLAUDE.md`'s feature-parity notes
+— once it exists, wherever it persists or relays the raw request body is
+your source), save those bytes to a file untouched before decoding; there's
+nothing to unwrap first.
+
+### Running the decoder
+
+Zephyr vendors its own dictionary-log decoder, unmodified — `pigeon` doesn't
+ship a custom one:
+
+```sh
+source .venv/bin/activate
+python3 zephyr/scripts/logging/dictionary/log_parser.py \
+    build/https_init/zephyr/log_dictionary.json \
+    <captured-chunk-file>
+```
+
+`log_parser.py`'s two positional args are the dictionary database, then the
+raw log data file — no `--hex`/`--rawhex` needed for this path (those are
+for hex-encoded transports, e.g. dumping over a text console; the HTTP POST
+above is already raw binary end to end).
+
+**Dependency gap:** `log_parser.py` imports `colorama` for its output
+formatting, which this README's `pip install west` setup step does not pull
+in — a fresh `.venv` fails at import time (`ModuleNotFoundError: No module
+named 'colorama'`) before it even reads its arguments. Run
+`python3 -m pip install colorama` (inside the activated venv; plain `pip`
+isn't necessarily on `PATH` even when the venv is active) once, ahead of the
+first decode.
+
+**No-hardware sanity check:** `log_parser.py <dbfile> /dev/null` exits `0`
+with no output (empty input, nothing to decode) — confirms the parser and
+database pair are wired up correctly, independent of having a real captured
+chunk yet. Verified against this repo's own
+`build/https_init/zephyr/log_dictionary.json` while writing this section.
+
+Full end-to-end verification — flashing `https_init`, letting a real batch
+upload happen, and decoding what the backend actually received — is blocked
+on that backend `/logs` route landing; this section documents the flow so
+it's ready to exercise the moment it does.
