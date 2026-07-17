@@ -102,11 +102,12 @@ Both values come back from the pigeon's `create`/`token/refresh` response —
 tokens are stripped from every other route, so this is the only chance to
 capture one (refreshing mints a new keypair and revokes the old token).
 
-`samples/https_init/src/main.c` also has a `config.device_id` field, hardcoded
-to a specific pigeon ID for logging purposes only (`pigeon_init()` never uses
-it to build a request — see the comment above it in `main.c`). It doesn't
-need to match `CONFIG_PIGEON_ENDPOINT` for the sample to work, but keeping it
-in sync avoids a misleading device ID in the boot log.
+`samples/https_init/src/main.c` also has a `config.device_id` field, used for
+logging only (`pigeon_init()` never uses it to build a request — see the
+comment above it in `main.c`). It's left as a neutral placeholder
+(`"pigeon-sample"`) in tracked source and doesn't need to match
+`CONFIG_PIGEON_ENDPOINT` for the sample to work — don't replace it with a
+real pigeon ID, since unlike `prj.local.conf` this file is committed.
 
 ### 2. Build and flash
 

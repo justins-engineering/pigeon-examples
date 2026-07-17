@@ -11,15 +11,16 @@ int main(void) {
   }
 
   /* Endpoint and token come from CONFIG_PIGEON_ENDPOINT/CONFIG_PIGEON_TOKEN
-   * (see prj.local.conf) instead of this struct. device_id must match the
-   * endpoint's device path segment (dovecote's get_shadow_device verifies
-   * the bearer token against this pigeon's own stored device_public_key,
-   * not against any claim in the token itself -- there's no JWT anymore,
-   * see pigeon's CLAUDE.md), even though it isn't used to build the shadow
-   * request itself -- pigeon_shadow_get() relies solely on
-   * CONFIG_PIGEON_ENDPOINT for that. */
+   * (see prj.local.conf) instead of this struct. device_id is log-only --
+   * dovecote's get_shadow_device verifies the bearer token against this
+   * pigeon's own stored device_public_key, not against any claim in the
+   * token itself (there's no JWT anymore, see pigeon's CLAUDE.md), and
+   * pigeon_shadow_get() relies solely on CONFIG_PIGEON_ENDPOINT to address
+   * the request. Left as a neutral placeholder rather than a real pigeon
+   * ID: a real pigeon ID belongs only in the gitignored prj.local.conf,
+   * never in tracked source. */
   struct pigeon_config config = {
-      .device_id = "1da98d5413f5bc79e03bf5648aa976d85a6634e3e05b1a91c85c79f7adb9d821",
+      .device_id = "pigeon-sample",
       .connector = {.type = PIGEON_CONNECTOR_HTTPS},
   };
 
