@@ -188,15 +188,19 @@ you keeping track yourself.
 
 ### Getting a raw chunk to decode
 
-What lands at `<CONFIG_PIGEON_ENDPOINT>/logs` is exactly what
-`pigeon_log_backend.c` drained from its ring buffer — a raw binary stream of
-concatenated dictionary log records, no JSON envelope, no batching framing
-of its own beyond that concatenation. However you capture one server-side
-(the staging `/device/pigeons/:id/logs` route is still landing on the
-backend as of this writing — see `~/pigeon/CLAUDE.md`'s feature-parity notes
-— once it exists, wherever it persists or relays the raw request body is
-your source), save those bytes to a file untouched before decoding; there's
-nothing to unwrap first.
+What lands at `<CONFIG_PIGEON_ENDPOINT>/logs` (device-facing `POST
+/device/pigeons/:id/logs`) is exactly what `pigeon_log_backend.c` drained
+from its ring buffer — a raw binary stream of concatenated dictionary log
+records, no JSON envelope, no batching framing of its own beyond that
+concatenation. dovecote keeps the last 200 uploaded chunks per pigeon (a
+ring buffer server-side too, oldest pruned automatically) and exposes them
+to the owning dashboard user at `GET /pigeons/:id/logs` (Kratos-session-
+gated, not device-authenticated) as a JSON array of `{id, data, received_at}`
+oldest-first, where `data` is the raw chunk **base64-encoded** for JSON
+transport — decode that base64 back to bytes before handing it to
+`log_parser.py` below, since the bytes it expects are the same raw stream
+the device sent, not the base64 text. Save each chunk's decoded bytes to its
+own file untouched; there's nothing else to unwrap.
 
 ### Running the decoder
 
@@ -229,7 +233,12 @@ database pair are wired up correctly, independent of having a real captured
 chunk yet. Verified against this repo's own
 `build/https_init/zephyr/log_dictionary.json` while writing this section.
 
-Full end-to-end verification — flashing `https_init`, letting a real batch
-upload happen, and decoding what the backend actually received — is blocked
-on that backend `/logs` route landing; this section documents the flow so
-it's ready to exercise the moment it does.
+**Verified end-to-end on real hardware (2026-07-17):** flashed `https_init`
+to a CircuitDojo nRF9160 Feather against the staging pigeon, confirmed via
+`GET /pigeons/:id/logs` that dictionary-log chunks landed on the backend at
+the expected `CONFIG_PIGEON_LOG_UPLOAD_MAX_INTERVAL_MS` (60s) cadence, and
+decoded one with the exact command above. The decoded text lined up
+byte-for-byte with what `pyserial-miniterm` showed live over UART for the
+same boot — including the `*** Booting Pigeon ...` banner and first shadow
+sync — confirming the dictionary database and the uploaded chunk really do
+come from the same build.
