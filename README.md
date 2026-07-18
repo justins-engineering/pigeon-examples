@@ -8,19 +8,25 @@ and pulled in as a west module via `samples/pigeon_module.cmake`).
 
 This directory is a west workspace: `samples/` is the manifest ("self") repo, and
 `nrf/`, `zephyr/`, `bootloader/`, `modules/`, `nrfxlib/` are vendored checkouts
-fetched by `west update` (gitignored, not part of this repo).
+fetched by `west update` (gitignored, not part of this repo). `modules/hal/espressif`
+(the `hal_espressif` west project, added for the ESP32-C6 port below) is vendored
+the same way.
 
 ```
 samples/
   west.yml              # west manifest (self path: samples)
   pigeon_module.cmake    # shared: wires ../../pigeon in via ZEPHYR_EXTRA_MODULES
   https_init/             # pigeon_init() with an HTTPS connector; shadow sync,
-                           # MCUmgr DFU, MCUboot/sysbuild, graceful modem shutdown
+                           # MCUmgr DFU, MCUboot/sysbuild, graceful modem shutdown,
+                           # CONFIG_PIGEON_FOTA -- nRF9160 only
   coap_tcp_init/          # pigeon_init() with a CoAP-over-TLS/TCP connector
                            # (TLS PSK fields; no on-device UDP support yet);
                            # same shadow-sync loop as https_init, no bootloader
   shadow_model/           # builds pigeon_shadow_doc / pigeon_shadow_update_request
                            # structs and logs them (no transport yet)
+  wifi_init/              # pigeon_init() with an HTTPS connector over WiFi
+                           # (ESP32-C6-DevKitC-1); no bootloader/FOTA -- see
+                           # "ESP32-C6-DevKitC-1 port" below
 ```
 
 Each sample is independently buildable. `https_init` and `coap_tcp_init` both
@@ -313,3 +319,152 @@ downloaded, flashed, or booted on a CircuitDojo nRF9160 Feather yet. Update
 this section with a real hardware e2e result (mirroring the log-upload
 section's "Verified end-to-end on real hardware" note above) once that
 lands.
+
+## ESP32-C6-DevKitC-1 port
+
+`samples/wifi_init` is a new, independent sample (not a modification of
+`https_init`) exercising `pigeon`'s HTTPS connector over WiFi on an
+ESP32-C6, since `https_init`'s LTE bring-up (`connection_manager.c`'s
+`lte_lc_power_off()` etc.) and MCUboot/sysbuild setup are both nRF9160-
+specific and don't carry over. **Build-verified only** (`west build` exit
+0) — no ESP32-C6-DevKitC-1 is attached to this host (`lsusb` shows only
+the nRF9160's CP210x adapter), so nothing below has been flashed or run.
+"Builds cleanly + documented port gaps" is the target here, not a working
+WiFi port — see the gaps section below for what's genuinely unfinished.
+
+### `hal_espressif` module (`samples/west.yml`)
+
+Adds the `hal_espressif` west project (Espressif's Zephyr HAL, needed for
+any ESP32 board target) as a plain additive entry — no existing project's
+revision was touched. The pin is **not** the commit originally parked in
+this file as a comment: that SHA
+(`684c9e8f32e4373a21098559f748f06915f950c9`) doesn't exist in the upstream
+`hal_espressif` repo at all (`git fetch` + `git cat-file -t` on it fails
+even after a full fetch of every branch). The correct pin —
+`b7953b8019361d09e613f7011d2ccc41b984d087` — is copied from this
+workspace's own vendored `zephyr/west.yml` (the `sdk-zephyr` fork pinned by
+`nrf`'s `v3.4.0`), i.e. the actual `hal_espressif` revision this
+workspace's Zephyr tree expects. Verified with `west update hal_espressif`
+(clean checkout, no errors) and `west blobs fetch hal_espressif` (fetches
+`libcore.a`/`libnet80211.a`/`libpp.a`/etc. for every ESP32 variant,
+including `esp32c6` — WiFi needs these prebuilt binary blobs; they're
+gitignored artifacts, not committed).
+
+### Board target
+
+`esp32c6_devkitc/esp32c6/hpcore` — the board's `esp32c6_devkitc_hpcore.yaml`
+identifier (Zephyr's hardware model v2 board/SoC/core qualifier scheme).
+The ESP32-C6 has a separate low-power RISC-V core (`lpcore`); `hpcore` is
+the main application core WiFi/BT actually run on
+(`netif:wifi`/`netif:openthread` in its supported-features list, `lpcore`
+has neither). The board's own devicetree already enables the `&wifi` node
+by default (`zephyr/boards/espressif/esp32c6_devkitc/esp32c6_devkitc_hpcore.dts`),
+so no board overlay was needed for that part.
+
+### Building
+
+```sh
+source .venv/bin/activate
+west build -d build_esp32c6 samples/wifi_init -b esp32c6_devkitc/esp32c6/hpcore
+```
+
+Separate build dir (`build_esp32c6`, gitignored via the same `/build_*/`
+pattern as `build/`) so this never clobbers `https_init`'s `build/` — the
+nRF9160 FOTA e2e work depends on that directory staying intact. One-time
+setup needed beyond the usual `west update`: `west packages pip --install`
+(installs `esptool`, which this board's `zephyr/soc/espressif/common/CMakeLists.txt`
+hard-requires and which isn't pulled in by the base `pip install west`
+setup step). Verified 2026-07-17: `west build` exits 0, 8.76% flash /
+41.37% SRAM used, esptool successfully packages the ESP32-C6 image.
+
+### Provisioning (same gitignored `prj.local.conf` pattern as `https_init`)
+
+```sh
+cat > samples/wifi_init/prj.local.conf <<'EOF'
+CONFIG_PIGEON_ENDPOINT="https://api.pidgeiot.com/device/pigeons/<pigeon-id>"
+CONFIG_PIGEON_TOKEN="<device-bearer-token>"
+CONFIG_WIFI_CREDENTIALS_STATIC_SSID="<wifi-ssid>"
+CONFIG_WIFI_CREDENTIALS_STATIC_PASSWORD="<wifi-psk>"
+EOF
+```
+
+Unlike `CONFIG_PIGEON_ENDPOINT`/`_TOKEN`, the tracked `prj.conf` can't
+leave `CONFIG_WIFI_CREDENTIALS_STATIC_SSID` unset — Zephyr's `wifi_mgmt.c`
+has a compile-time `BUILD_ASSERT` requiring a non-empty SSID string even
+before `prj.local.conf` is merged in, so `prj.conf` ships a `"changeme"`
+placeholder that `prj.local.conf`'s real value overrides (Kconfig fragment
+merge order: `EXTRA_CONF_FILE` entries win over `prj.conf` for the same
+symbol).
+
+### Flashing (documented for when hardware arrives — not run)
+
+```sh
+west flash -d build_esp32c6
+```
+
+The board's `board.cmake` defaults to the `esp32` runner (esptool-based,
+same tool that already packaged the build output above) with `openocd` as
+a fallback; pass `--esp-device /dev/ttyUSBn` if more than one serial
+adapter is attached. **Do not run this against the currently-attached
+nRF9160** — no ESP32-C6-DevKitC-1 is connected as of this writing, and
+this command is untested against real hardware.
+
+### Documented port gaps
+
+Two real build-breaking incompatibilities were found and worked through
+(not around) to get a clean build; both are recorded inline in
+`samples/wifi_init/prj.conf`/`sysbuild.conf` where they were fixed, and
+summarized here:
+
+- **`CONFIG_WIFI=y` (`WIFI_ESP32`) auto-selects `MBEDTLS`, but only for
+  ESP32's own WPA2/WPA3 handshake crypto — not a usable TLS *client*
+  stack.** `pigeon_https.c`'s `CONFIG_NET_SOCKETS_SOCKOPT_TLS` needs the
+  full mbedTLS SSL/TLS protocol layer (`MBEDTLS_SSL_CLI_C` and friends),
+  which only gets compiled in once `CONFIG_MBEDTLS_SSL_PROTO_TLS1_2` is
+  explicitly selected — without it, `sockets_tls.c` fails with "implicit
+  declaration of function 'mbedtls_ssl_get_session'". From there, mbedTLS
+  4.x/tf-psa-crypto's PSA-based config needs a hash algorithm
+  (`PSA_WANT_ALG_SHA_256`), a key exchange method
+  (`MBEDTLS_KEY_EXCHANGE_ECDHE_RSA_ENABLED`/`_ECDHE_ECDSA_ENABLED` +
+  matching `PSA_WANT_ALG_ECDH`/`ECDSA`/`PSA_WANT_ECC_SECP_R1_256`), and a
+  bulk cipher (`PSA_WANT_ALG_GCM` + `PSA_WANT_KEY_TYPE_AES`) each
+  explicitly selected, or the build fails one step further down the same
+  "feature X selected but nothing implements it" chain each time (a
+  missing piece shows up as either a hard `#error` or a
+  `-Werror=unused-variable/-function` in otherwise-dead code for that
+  missing feature — both are the same underlying problem). None of this
+  was needed by `https_init`/`coap_tcp_init`, since TLS there is offloaded
+  to the nRF91 modem (`CONFIG_MODEM_KEY_MGMT`) rather than compiled from
+  mbedTLS at all. This is genuinely new territory `pigeon`'s HTTPS
+  connector hadn't been exercised against before.
+- **MCUboot doesn't build for this board in this workspace.**
+  `esp32c6_devkitc`'s own `Kconfig.sysbuild` defaults `BOOTLOADER` to
+  `BOOTLOADER_MCUBOOT` (Espressif boards require a bootloader by default,
+  unlike the nRF9160 boards where it's opt-in) — but building it fails:
+  this workspace's `nrf` project (`sdk-nrf`) pulls `nrf/CMakeLists.txt`
+  into every sysbuild image unconditionally, including MCUboot's, and
+  `nrfxlib/common.cmake` hard-asserts `"GCC_M_CPU must be set to find
+  correct lib"` trying to resolve a Nordic-only crypto library path for an
+  SoC (`esp32c6`) it has never heard of —
+  `nrf/cmake/device_support.cmake` even prints `"SoC esp32c6 is not
+  supported by this release"` immediately before the assert fires. This
+  is NCS's own build machinery assuming Nordic-only SoCs workspace-wide,
+  not something `pigeon` or this sample can fix from the sample level.
+  `wifi_init/sysbuild.conf` explicitly forces `SB_CONFIG_BOOTLOADER_NONE=y`
+  to route around it rather than chase the assertion. **Consequence: no
+  MCUboot means no `CONFIG_PIGEON_FOTA` on ESP32-C6 yet** — the FOTA work
+  in the "Firmware updates" section above is nRF9160-only until this
+  workspace either gains real NCS support for `esp32c6` or someone
+  decouples the `nrf` project's CMake coupling from non-Nordic sysbuild
+  images. Worth re-checking against a future `nrf` (`sdk-nrf`) release
+  before assuming this is permanent.
+- **No graceful-shutdown-before-reboot story.** `shadow.c`'s `reboot`
+  handling calls `wifi_disconnect()` before `sys_reboot()`, but unlike
+  the nRF91 modem's reset-loop protection (see `https_init`'s "Modem
+  reset safety" note), this hasn't been checked against real ESP32-C6 WiFi
+  behavior — there's no hardware yet to confirm whether an ungraceful
+  reset has any equivalent penalty here. Treat it as untested, not as
+  "known safe."
+- **No MCUmgr/serial-DFU wiring**, unlike `https_init` — there's no
+  bootloader to manage images for yet (see above), so this wasn't set up
+  even as a placeholder.
