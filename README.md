@@ -242,3 +242,74 @@ byte-for-byte with what `pyserial-miniterm` showed live over UART for the
 same boot — including the `*** Booting Pigeon ...` banner and first shadow
 sync — confirming the dictionary database and the uploaded chunk really do
 come from the same build.
+
+## Firmware updates (`CONFIG_PIGEON_FOTA`)
+
+`https_init`'s `prj.conf` turns on `pigeon`'s opt-in FOTA client
+(`CONFIG_PIGEON_FOTA`, see `../pigeon/README.md`'s "Firmware updates"
+section for the full API/Kconfig writeup) alongside
+`CONFIG_PIGEON_FOTA_CURRENT_VERSION="0.1.0"` — this sample's compile-time
+"what am I" string, compared against the shadow's `target_config.firmware`
+on every poll. `shadow.c` wires the whole loop: `pigeon_fota_confirm_boot()`
+runs on every successful `shadow_sync()` (the app's definition of "healthy
+boot") *before* the convergence early-return, so a freshly-applied image
+gets confirmed on its very first successful poll rather than waiting for a
+config change; `pigeon_fota_apply()` fires when the shadow's
+`firmware.version` doesn't match the running build; on success the device
+reports its updated `current_config` back via `pigeon_shadow_report()`
+*before* gracefully disconnecting LTE and rebooting — the shadow must
+converge on the platform side before the device goes dark for the swap. A
+failed `pigeon_fota_apply()` leaves `current_config.firmware` unchanged, so
+the next poll sees the same mismatch and retries from byte 0 rather than
+the shadow believing convergence already happened.
+
+### Signing key — do not ship the default
+
+Same caveat as `../pigeon/README.md`: `sysbuild.conf` here only sets
+`SB_CONFIG_BOOT_SIGNATURE_TYPE_ECDSA_P256=y`, no
+`CONFIG_BOOT_SIGNATURE_KEY_FILE` override, so every `https_init` build in
+this repo today is signed with MCUboot's upstream dev key
+(`bootloader/mcuboot/root-ec-p256.pem`) — a key whose private half is
+public in the open-source MCUboot repo. That's fine for bring-up (this is
+exactly why MCUboot ships it, and it's what makes `imgtool sign` "just
+work" with zero setup below), but it means MCUboot will happily boot an
+image signed by *anyone* using that same well-known key. Before pointing a
+real fleet at a real backend, generate a project key pair with `imgtool
+keygen`, set `CONFIG_BOOT_SIGNATURE_KEY_FILE` to the public half's path in
+`samples/https_init/sysbuild/mcuboot/prj.conf`, and make sure only the
+firmware-upload path on the `dovecote` side (or whatever signs release
+images) ever touches the private half.
+
+### Fallback / revert behavior
+
+`pigeon_fota_apply()` schedules a one-time MCUboot **test-swap**, not a
+permanent swap — this is what makes a bad update self-healing:
+
+1. Shadow requests a new `firmware.version` → device downloads, verifies
+   sha256, and schedules the test-swap (secondary slot marked
+   pending-test, not yet confirmed).
+2. Device reports shadow convergence, disconnects LTE, and cold-reboots.
+   MCUboot swaps the new image into the primary slot and boots it *once*
+   without marking it permanent.
+3. If the new image boots and its first `shadow_sync()` succeeds,
+   `pigeon_fota_confirm_boot()` calls `boot_write_img_confirmed()` and the
+   swap becomes permanent — MCUboot will keep booting this image on future
+   resets.
+4. If the new image never reaches a successful `shadow_sync()` (crash,
+   boot loop, LTE failure, wrong signing key) before the next reset,
+   MCUboot reverts: the *un*confirmed image is swapped back out and the
+   previous (previously-confirmed) image boots instead, with no server
+   involvement needed. This is the same mechanism `west build`/`west
+   flash`'s "test image" workflow relies on generally — see MCUboot's own
+   docs on swap-type "test" vs "permanent" if you want to force a revert
+   manually while bench-testing (flash an unconfirmed image and just power
+   cycle without ever calling `pigeon_fota_confirm_boot()`).
+
+**Not yet verified against real hardware or a live backend** as of this
+writing: `dovecote`'s `/device/pigeons/:id/firmware` route (task #23) is
+still in flight, so the code above has only been build-verified (`west
+build` exit 0, MCUboot image signs) — no chunk has actually been
+downloaded, flashed, or booted on a CircuitDojo nRF9160 Feather yet. Update
+this section with a real hardware e2e result (mirroring the log-upload
+section's "Verified end-to-end on real hardware" note above) once that
+lands.
