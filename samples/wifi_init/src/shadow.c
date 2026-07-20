@@ -14,6 +14,33 @@
 
 LOG_MODULE_REGISTER(shadow);
 
+#if defined(CONFIG_PIGEON_WS)
+/* Signaled by shadow_ws_event_cb() (called from the WS worker thread, see
+ * pigeon_ws_start()'s docs) to wake shadow_loop() immediately instead of
+ * waiting out its telemetry_interval sleep. */
+K_SEM_DEFINE(shadow_wakeup, 0, 1);
+
+void shadow_ws_event_cb(enum pigeon_ws_event ev, const struct pigeon_shadow_doc *shadow) {
+  ARG_UNUSED(shadow); /* v1: a push is a wakeup, not a data path -- shadow_sync()
+                        * always re-fetches over HTTPS rather than consuming the
+                        * pushed doc directly (see shadow_loop()'s doc). */
+
+  switch (ev) {
+    case PIGEON_WS_EVENT_CONNECTED:
+      /* The server sends no state snapshot on accept, so a fresh (or
+       * reconnected) socket may mean the platform moved on while we were
+       * disconnected -- re-sync now rather than waiting for the next tick. */
+    case PIGEON_WS_EVENT_SHADOW_UPDATE:
+      k_sem_give(&shadow_wakeup);
+      break;
+    case PIGEON_WS_EVENT_DISCONNECTED:
+      /* Purely informational -- the periodic tick remains the safety net
+       * while the socket is down, nothing to wake up for here. */
+      break;
+  }
+}
+#endif /* CONFIG_PIGEON_WS */
+
 /* Same struct/decode pattern as https_init's shadow.c, minus the "firmware"
  * key: this sample has no MCUboot/sysbuild setup (see README), so
  * CONFIG_PIGEON_FOTA isn't enabled here and there's nowhere to apply a
@@ -170,6 +197,12 @@ int shadow_sync(void) {
    * with a clean conn_mgr teardown. */
   if (target.reboot) {
     LOG_WRN("Shadow v%d requested reboot; disconnecting and rebooting now", doc.target_version);
+#if defined(CONFIG_PIGEON_WS)
+    /* Graceful CLOSE before the network goes down, same reasoning as the
+     * WiFi teardown right below: let the server see a clean disconnect
+     * instead of discovering the drop only via a dead ping/idle timeout. */
+    pigeon_ws_stop();
+#endif
     wifi_disconnect();
     sys_reboot(SYS_REBOOT_COLD);
   }
@@ -181,7 +214,15 @@ void shadow_loop(void) {
   while (1) {
     shadow_sync();
 
+#if defined(CONFIG_PIGEON_WS)
+    /* telemetry_interval remains the safety-net poll period while the WS
+     * socket is down; a pushed shadow_update or a fresh CONNECTED event
+     * (see shadow_ws_event_cb()) collapses the wait to ~instant instead. */
+    LOG_INF("Next shadow poll in <=%d s (or sooner on WS push)", current_config.telemetry_interval);
+    k_sem_take(&shadow_wakeup, K_SECONDS(current_config.telemetry_interval));
+#else
     LOG_INF("Next shadow poll in %d s", current_config.telemetry_interval);
     k_sleep(K_SECONDS(current_config.telemetry_interval));
+#endif
   }
 }
