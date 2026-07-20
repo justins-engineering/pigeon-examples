@@ -1,0 +1,42 @@
+/* nRF9151 Feather counterpart to circuitdojo_feather_nrf9160.overlay
+ * (mcuboot's own board file). Same structure, adjusted for this board's
+ * actual console baud (115200, not the 9160's 1000000 -- verified against
+ * this board's pinctrl-level devicetree and confirmed live on real hardware
+ * during phase 1, task #13).
+ *
+ * No hw-flow-control: this board's uart0_default pinctrl only routes TX/RX
+ * (see ../../../boards/circuitdojo/feather_nrf9151/circuitdojo_feather_nrf9151_common-pinctrl.dtsi),
+ * no CTS/RTS pins. Enabling HW flow control with no CTS pin wired makes the
+ * UARTE hardware wait forever for CTS and silently blocks all TX -- same
+ * gotcha the 9160 overlay's comment already documents.
+ */
+&uart0 {
+  status = "okay";
+  compatible = "nordic,nrf-uarte";
+  current-speed = <115200>;
+  pinctrl-0 = <&uart0_default>;
+  pinctrl-1 = <&uart0_sleep>;
+  pinctrl-names = "default", "sleep";
+};
+
+/* No custom flash partitioning here either: must stay in sync with
+ * ../../../boards/circuitdojo_feather_nrf9151_ns.overlay, which likewise
+ * applies no top-level partition overrides and relies on this board's own
+ * stock internal flash layout (circuitdojo_feather_nrf9151_partition_conf.dtsi). */
+
+/ {
+  chosen {
+    /* Critical: MCUboot must link itself against boot_partition (0x0), not
+     * the board's default zephyr,code-partition (&slot0_partition, 0x10000).
+     * Zephyr's devicetree-overlay lookup is a cascading fallback, not a
+     * merge: once a boards/<board>.overlay is found (this file), it never
+     * falls through to check app.overlay too -- see the 9160 overlay's
+     * fuller writeup of the same gotcha. Keep this override here, not in a
+     * separate app.overlay. */
+    zephyr,code-partition = &boot_partition;
+
+    zephyr,console = &uart0;
+    zephyr,shell-uart = &uart0;
+    zephyr,uart-mcumgr = &uart0;
+  };
+};

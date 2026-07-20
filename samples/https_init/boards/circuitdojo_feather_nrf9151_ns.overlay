@@ -1,0 +1,89 @@
+/* nRF9151 Feather counterpart to circuitdojo_feather_nrf9160_ns.overlay (see
+ * that file's comments for the general rationale of each block). Two things
+ * this board does NOT need, unlike the 9160 overlay, verified against this
+ * board's own out-of-tree definition (../../boards/circuitdojo/feather_nrf9151/,
+ * task #13) before being dropped rather than blindly copied:
+ *
+ * - No `&i2c1 { status = "disabled"; }`: i2c1 and uart1 share the same
+ *   peripheral instance (reg 0x9000, confirmed via this board's own merged
+ *   zephyr.dts from the phase-1 smoke build) same as on the 9160, but i2c1
+ *   already defaults to "disabled" at the SoC devicetree level here and
+ *   nothing in this board's common.dtsi turns it on (only i2c2 is enabled,
+ *   for the onboard PMIC/accel/etc.) -- so there's no live conflict to
+ *   suppress.
+ * - No `&sram0_ns_modem` trace-buffer carve-out: the 9160 override exists
+ *   because that board's generic upstream partition file
+ *   (zephyr/dts/vendor/nordic/nrf91xx_partition.dtsi) reserves 40 KB for
+ *   modem shared memory but only wires up ~22.5 KB of it, leaving the trace
+ *   buffer to be hand-carved from the slack. This board's own
+ *   circuitdojo_feather_nrf9151_partition_conf.dtsi (Circuit Dojo's own,
+ *   not the generic upstream one) already defines
+ *   cpucell_cpuapp_ipc_shm_trace at 0x4800/0x4000 inside that same 40 KB
+ *   region -- nothing left to carve out.
+ *
+ * Must stay in sync with ../sysbuild/mcuboot/boards/circuitdojo_feather_nrf9151.overlay
+ * (MCUboot's own board file) on flash layout -- see that file's comment.
+ */
+
+&uart1 {
+  status = "okay";
+  current-speed = <1000000>;
+};
+
+&uart0 {
+  status = "okay";
+  compatible = "nordic,nrf-uarte";
+  current-speed = <115200>;
+  pinctrl-0 = <&uart0_default>;
+  pinctrl-1 = <&uart0_sleep>;
+  pinctrl-names = "default", "sleep";
+};
+
+/* Secure/nonsecure rebalance within slot0/slot1, same motivation and same
+ * split as the 9160 overlay: this board's stock default (from its own
+ * circuitdojo_feather_nrf9151_common.dtsi, 256 KB secure / 192 KB nonsecure)
+ * overflows the nonsecure app image -- confirmed by an actual failing build
+ * before adding this (FLASH region overflowed by 87758 bytes at the stock
+ * split), not assumed up front. Total slot size (448 KB) is unchanged. */
+/delete-node/ &slot0_s_partition;
+/delete-node/ &slot0_ns_partition;
+
+&slot0_partition {
+  slot0_s_partition: partition@0 {
+    compatible = "zephyr,mapped-partition";
+    label = "image-0-secure";
+    reg = <0x00000000 0x00020000>;
+  };
+
+  slot0_ns_partition: partition@20000 {
+    compatible = "zephyr,mapped-partition";
+    label = "image-0-nonsecure";
+    reg = <0x00020000 0x00050000>;
+  };
+};
+
+/delete-node/ &slot1_s_partition;
+/delete-node/ &slot1_ns_partition;
+
+&slot1_partition {
+  slot1_s_partition: partition@0 {
+    compatible = "zephyr,mapped-partition";
+    label = "image-1-secure";
+    reg = <0x00000000 0x00020000>;
+  };
+
+  slot1_ns_partition: partition@20000 {
+    compatible = "zephyr,mapped-partition";
+    label = "image-1-nonsecure";
+    reg = <0x00020000 0x00050000>;
+  };
+};
+
+/ {
+  chosen {
+    zephyr,console = &uart0;
+    zephyr,shell-uart = &uart0;
+    zephyr,uart-mcumgr = &uart0;
+    nordic,modem-trace-uart = &uart1;
+  };
+};
