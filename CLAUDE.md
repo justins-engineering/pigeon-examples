@@ -195,15 +195,67 @@ work around or skip it when scripting flashes/tests.
 - **`shadow_model`** — smallest sample; just builds/logs `pigeon_shadow_doc`/
   `pigeon_shadow_update_request`, no network transport. Good smoke test that the shared data
   structures still compile after a `pigeon` header change, independent of any connector work.
-- **`wifi_init`** (added 2026-07-19, task #27) — ESP32-C6-DevKitC-1 board bring-up prep, build-verified
-  only (no real hardware run yet). `samples/west.yml`'s `hal_espressif` revision was corrected to
+- **`wifi_init`** (added 2026-07-19, task #27; `CONFIG_PIGEON_WS` landed and hardware-verified
+  2026-07-20, task #33) — ESP32-C6-DevKitC-1 board bring-up, now verified end-to-end on real hardware
+  against staging: WS connect, `shadow_update` push delivered in ~1s of a dashboard write,
+  telemetry-over-WS in ~10ms (vs. ~10s over HTTPS), and a live socket-steal recovery (rival connection
+  closes this device's socket with 4009, device reconnects and reclaims the slot in ~1s — see
+  `~/pigeon/CLAUDE.md`'s `pigeon_ws_teardown()` writeup for the context-leak bug this test caught).
+  `samples/west.yml`'s `hal_espressif` revision was corrected to
   `b7953b8019361d09e613f7011d2ccc41b984d087` (a prior pin referenced a commit that doesn't exist —
-  sourced the fix from this workspace's own vendored `zephyr/west.yml`). Two honestly-documented gaps
-  left open in this sample's README rather than papered over: (1) it has no WS/WiFi-native transport
-  yet — `pigeon` itself doesn't have a WebSocket client (see `~/pigeon/CLAUDE.md`'s feature-parity
-  gaps, task #33), so this sample currently reuses the HTTPS connector, which works over WiFi but
-  doesn't exercise anything WiFi/non-cellular-specific; (2) not yet flashed/run on real ESP32-C6
-  hardware, unlike `https_init`'s nRF9160 verification.
+  sourced the fix from this workspace's own vendored `zephyr/west.yml`).
+
+  **Board/native-stack bring-up gaps found getting from "build-verified" to "works on real
+  hardware/real network"** — every one of these was invisible to compile-time checks, and none of
+  them exist in the nRF91 samples (`https_init`/`coap_tcp_init`) because that hardware offloads TLS
+  and the modem's own stack to a cellular modem instead of exercising Zephyr's native
+  WiFi/TCP/mbedTLS path. This list is the single most useful thing here for the next non-cellular
+  board bring-up — read it before assuming a nRF91 pattern carries over:
+
+  1. **No WiFi-join trigger**: `conn_mgr_all_if_connect()` alone is a no-op — it doesn't actually
+     join a network. Fixed by firing `NET_REQUEST_WIFI_CONNECT_STORED` explicitly
+     (`wifi_connection_manager.c`).
+  2. **Join flakiness**: real hardware showed the join alternating between a few seconds and a full
+     30s timeout, run to run. Fixed with a retry loop around the connect request.
+  3. **No DNS resolver wired up**, and a related name-length gap in the resolver config — endpoint
+     hostname resolution silently failed without it.
+  4. **No native TCP support enabled** — WiFi/native sockets need their own Kconfig path turned on
+     that the nRF91 modem-offloaded samples never needed.
+  5. **`CONFIG_NET_SOCKETS_TLS_MAX_CONTEXTS` defaults to 1**, not enough for HTTPS and WS to hold
+     concurrent TLS contexts — bumped to 3.
+  6. **No PEM cert parsing enabled** — needed for the CA cert to be usable at all on this stack.
+  7. **GTS Root R4 CA bundle**: the two-cert bundle's second (RSA cross-signed) cert made
+     `mbedtls_x509_crt_parse()` mask a real per-cert parse failure (`-0x2100`, RSA sig-alg OID
+     unrecognized — `PSA_WANT_KEY_TYPE_RSA_KEY_PAIR_BASIC` needs `_IMPORT`/`_EXPORT`/`_GENERATE`/
+     `_DERIVE`, not just `_PUBLIC_KEY`) behind a generic "+1 cert failed" count. Trimmed the bundle to
+     just the leaf CA cert after confirming it alone parses and is cryptographically sufficient —
+     trade-off documented in the cert file: if Google rotates/revokes this exact R4 cert before the
+     RSA cross-sign path is separately fixed, this sample's TLS chain breaks until the file is
+     updated again.
+  8. **SNI never emitted** (`CONFIG_MBEDTLS_SSL_SERVER_NAME_INDICATION` never set) — root cause of a
+     `-0x7780` TLS handshake fatal alert against the real edge (Cloudflare) endpoint, found via
+     byte-for-byte ClientHello comparison against a working `openssl s_client` connection.
+  9. **mbedTLS's own dedicated heap unwired** (`CONFIG_MBEDTLS_ENABLE_HEAP`) — a compounding gap
+     found in the same handshake once SNI was fixed.
+  10. **Missing PSA key-generation/derivation wants**: `PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_GENERATE`
+      (ECDHE key generation) and `PSA_WANT_ALG_TLS12_PRF`/`_HMAC`/`KEY_TYPE_HMAC` (TLS1.2 PRF) — both
+      needed for the handshake to complete once SNI/heap were fixed.
+  11. **`PSA_WANT_ALG_SHA_1` missing** — RFC 6455's WS upgrade handshake hashes `Sec-WebSocket-Key`
+      with SHA-1; without this, `websocket_connect()` failed with `-71`/EPROTO even though HTTPS
+      (which doesn't need SHA-1) already worked on the same hardware.
+
+  All eleven were root-caused the same way: a throwaway `native_sim` + NSOS (offloaded real
+  networking, no TAP/root setup needed) harness exercising the real `pigeon` code paths against the
+  real staging server, never guessed from static analysis alone.
+
+  **Memory sizing** (evidence-based, not guessed): `CONFIG_MBEDTLS_HEAP_SIZE` bumped to 96KiB after
+  measuring a real concurrent HTTPS+WS peak of 52.8KiB via `mbedtls_memory_buffer_alloc_max_get()`
+  in the same native_sim harness (which itself needed `CONFIG_NET_SOCKETS_TLS_MAX_CONTEXTS=3` — at
+  the tree default of 1, concurrent HTTPS+WS fails at `tls_context_alloc()`'s pool before ever
+  reaching mbedTLS's own allocator, hiding the true number). Recurring
+  `esp32c6_wifi_adapter: memory allocation failed` warnings on real hardware are a separate,
+  unmeasurable-via-native_sim pool — confirmed non-fatal (didn't block the WS milestone or the
+  socket-steal test above), tracked open as PidgeIoT task #15, not yet root-caused.
 
 ### Native-sim gotcha: no real modem
 
