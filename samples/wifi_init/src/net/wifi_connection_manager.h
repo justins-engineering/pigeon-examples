@@ -19,7 +19,15 @@ enum tls_sec_tags { NO_SEC_TAG, WIFI_SEC_TAG };
  *  @brief Brings up the ESP32-C6's WiFi station interface (static
  *  CONFIG_WIFI_CREDENTIALS_STATIC_SSID/_PASSWORD credentials), provisions
  *  the CA cert used for pigeon's HTTPS connector, and blocks until DHCP
- *  assigns an address (or the connect attempt times out).
+ *  assigns an address.
+ *
+ *  A single join attempt is bounded (WIFI_CONNECT_TIMEOUT), but a failed
+ *  attempt is retried indefinitely with backoff rather than returned as an
+ *  error -- real hardware has shown the join itself to be flaky across
+ *  otherwise-identical boots, and a headless device has no operator to
+ *  retry it manually. Only returns non-zero for a one-time setup failure
+ *  (CA cert provisioning, no WiFi interface found) that a join retry can't
+ *  fix.
  */
 int wifi_connect(void);
 
