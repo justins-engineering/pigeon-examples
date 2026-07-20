@@ -106,14 +106,14 @@ anywhere in this repo for which `pigeon` commit a given build used. If a build h
 
 - `~/pigeon/CLAUDE.md` — the pigeon module itself: wire-compat contract with `~/pidgeiot`
   (dovecote/capsules), current transport implementation state, feature-parity gap analysis. Read
-  before touching anything shadow/auth/connector-shaped in the samples here. As of 2026-07-15 both
-  `pigeon_https.c` and `pigeon_coap.c` are implemented (the latter still uncommitted in `~/pigeon` as
-  of this writing) — if that file still says `pigeon_coap.c` doesn't exist, it's lagging the Pigeon
-  Agent's actual working tree; check `git -C ~/pigeon log`/`status`, not just that file, for ground
-  truth on transport state.
-- `~/pidgeiot/dovecote`, `~/pidgeiot/capsules`, `~/pidgeiot/fancier` don't currently have their own
-  CLAUDE.md files (checked 2026-07-15) — `~/pigeon/CLAUDE.md`'s citations into their source files
-  are the closest thing to that context today.
+  before touching anything shadow/auth/connector-shaped in the samples here. `pigeon_https.c` and
+  `pigeon_coap.c` are both implemented and wire-compatible with the backend (CoAP-over-TLS/TCP gap
+  closed 2026-07-15); `pigeon_log_backend.c` (dictionary logging) and `pigeon_fota.c` (OTA/MCUboot)
+  landed 2026-07-17/18 — check `git -C ~/pigeon log` for ground truth on current transport/feature
+  state, this file lags in practice.
+- `~/pidgeiot/CLAUDE.md` is now the single up-to-date architecture doc for the backend monorepo
+  (dovecote/capsules/fancier) — `dovecote`/`capsules`/`fancier` still don't have their own per-crate
+  CLAUDE.md files, everything lives in the repo root one.
 
 ## `https_init` sample: current state
 
@@ -148,6 +148,22 @@ The most developed sample; treat it as the reference consumer of `pigeon`.
   upload build/https_init/zephyr/zephyr.signed.bin` over `/dev/ttyUSB0`.
 - **`CONFIG_PIGEON`/`CONFIG_PIGEON_CONNECTOR_HTTPS`** are enabled in `prj.conf`; endpoint/token are
   Kconfig strings supplied via the gitignored `prj.local.conf`, not hardcoded.
+- **Log upload** (`CONFIG_PIGEON_LOG_UPLOAD`, added 2026-07-17): opt-in Kconfig enabling
+  `pigeon`'s dictionary-mode log backend. Hardware-verified end-to-end (15 chunks decoded, byte-matched
+  against serial) — see this repo's README for the full host-side decode flow (`log_dictionary.json`
+  build artifact + `log_parser.py`, which needs `colorama` installed, an undocumented upstream gap
+  fixed here in the README rather than upstream).
+- **FOTA wiring** (`CONFIG_PIGEON_FOTA`, added 2026-07-18): `shadow.c` now also checks the shadow's
+  `firmware` target and calls into `pigeon`'s FOTA client when a new version is offered. `shadow.c`
+  was also given a graceful LTE detach before any FOTA-triggered `sys_reboot`, matching the same
+  `CFUN=0` discipline `connection_manager.c` already used elsewhere. Real hardware e2e (nRF9160,
+  board 1050038518) has exercised download → sha256 verify → MCUboot test-swap schedule → shadow
+  convergence report → graceful reboot successfully; what's not yet confirmed is a clean
+  post-reboot re-authentication/convergence (an OTA test image built before a token rotation will
+  401 forever once booted — rebuild, don't just re-upload, after rotating a device's token) and the
+  deliberate unconfirmed-image MCUboot-revert test. See README's FOTA section for the revert-fallback
+  writeup and the default-dev-signing-key risk (documented, not fixed — a real prod deploy needs a
+  real signing key).
 
 ### Modem reset safety
 
@@ -169,10 +185,8 @@ work around or skip it when scripting flashes/tests.
   `native_sim` and `circuitdojo_feather/nrf9160/ns` (verified 2026-07-15; hardware build needed
   `CONFIG_SIZE_OPTIMIZATIONS` instead of `CONFIG_DEBUG_OPTIMIZATIONS` to fit the default,
   non-rebalanced 192 KB nonsecure flash partition — see `prj.conf`'s comment).
-  Isn't wire-compatible with the current `~/pidgeiot` backend yet (UDP/DTLS `coaps://` only, and no
-  CoAP listener at all) — see `~/pigeon/CLAUDE.md`'s "Known wire-compat gap" note; `shadow_sync()`
-  failing against a real backend is expected, not a bug in this sample. **Known gap surfaced while
-  building this sample:** `pigeon_coap.c`'s PSK registration always calls `tls_credential_add()`, with
+  Wire-compatible with `~/pidgeiot` since 2026-07-15 (backend switched to `coaps+tcp://` — see
+  `~/pigeon/CLAUDE.md`). **Known gap, still open:** `pigeon_coap.c`'s PSK registration always calls `tls_credential_add()`, with
   no `CONFIG_MODEM_KEY_MGMT` branch — on real nRF91 hardware, TLS sockets are offloaded to the modem
   regardless of that setting (see `connection_manager.c`'s `CONFIG_MODEM_KEY_MGMT` comment), so PSK
   credentials never reach the modem's actual credential store there. Documented in this sample's
@@ -181,6 +195,15 @@ work around or skip it when scripting flashes/tests.
 - **`shadow_model`** — smallest sample; just builds/logs `pigeon_shadow_doc`/
   `pigeon_shadow_update_request`, no network transport. Good smoke test that the shared data
   structures still compile after a `pigeon` header change, independent of any connector work.
+- **`wifi_init`** (added 2026-07-19, task #27) — ESP32-C6-DevKitC-1 board bring-up prep, build-verified
+  only (no real hardware run yet). `samples/west.yml`'s `hal_espressif` revision was corrected to
+  `b7953b8019361d09e613f7011d2ccc41b984d087` (a prior pin referenced a commit that doesn't exist —
+  sourced the fix from this workspace's own vendored `zephyr/west.yml`). Two honestly-documented gaps
+  left open in this sample's README rather than papered over: (1) it has no WS/WiFi-native transport
+  yet — `pigeon` itself doesn't have a WebSocket client (see `~/pigeon/CLAUDE.md`'s feature-parity
+  gaps, task #33), so this sample currently reuses the HTTPS connector, which works over WiFi but
+  doesn't exercise anything WiFi/non-cellular-specific; (2) not yet flashed/run on real ESP32-C6
+  hardware, unlike `https_init`'s nRF9160 verification.
 
 ### Native-sim gotcha: no real modem
 
