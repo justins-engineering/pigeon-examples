@@ -42,6 +42,11 @@ pigeon-examples/            <- west topdir; this repo's git history covers sampl
                                   # (see pigeon's CLAUDE.md: backend only speaks coaps:// UDP/DTLS so far)
     shadow_model/                # builds pigeon_shadow_doc/pigeon_shadow_update_request and logs them;
                                   # no transport, exists to sanity-check the data structures compile/link
+    wifi_init/                   # pigeon_init() over HTTPS on ESP32-C6-DevKitC-1 (WiFi, not LTE);
+                                  # plain polling only, no CONFIG_PIGEON_WS -- see "Other samples" below
+    ws_init/                      # same board/HTTPS connector as wifi_init, plus CONFIG_PIGEON_WS: the
+                                  # dedicated demo of pigeon's persistent WS push channel, split out of
+                                  # wifi_init so WS isn't conflated with the plain-HTTPS-over-WiFi sample
   nrf/, zephyr/, bootloader/, nrfxlib/, modules/   # vendored by `west update`, gitignored, not this repo
 ```
 
@@ -195,12 +200,28 @@ work around or skip it when scripting flashes/tests.
 - **`shadow_model`** — smallest sample; just builds/logs `pigeon_shadow_doc`/
   `pigeon_shadow_update_request`, no network transport. Good smoke test that the shared data
   structures still compile after a `pigeon` header change, independent of any connector work.
-- **`wifi_init`** (added 2026-07-19, task #27; `CONFIG_PIGEON_WS` landed and hardware-verified
-  2026-07-20, task #33) — ESP32-C6-DevKitC-1 board bring-up, now verified end-to-end on real hardware
-  against staging: WS connect, `shadow_update` push delivered in ~1s of a dashboard write,
-  telemetry-over-WS in ~10ms (vs. ~10s over HTTPS), and a live socket-steal recovery (rival connection
-  closes this device's socket with 4009, device reconnects and reclaims the slot in ~1s — see
-  `~/pigeon/CLAUDE.md`'s `pigeon_ws_teardown()` writeup for the context-leak bug this test caught).
+- **`wifi_init` / `ws_init`** (added 2026-07-19, task #27; `CONFIG_PIGEON_WS` landed and
+  hardware-verified 2026-07-20, task #33; split into two samples 2026-07-21, task #37) —
+  ESP32-C6-DevKitC-1 board bring-up. Originally one sample (`wifi_init`) that grew `CONFIG_PIGEON_WS`
+  in place; per user directive (task #37), WS must never be the thing a reader has to opt *out* of to
+  see plain HTTPS-over-WiFi, and it deserved its own transport-focused demo the way `https_init`/
+  `coap_tcp_init` are for theirs — so the WS-carrying sample was renamed to `ws_init` (`git mv`,
+  history preserved) and a fresh, WS-free `wifi_init` was written alongside it, sharing the
+  board-bring-up code (`wifi_connection_manager.c/h`, cert, sysbuild/CMake boilerplate — literal
+  copies, same convention as `coap_tcp_init` copying `https_init`'s `shadow.c`) but with
+  `shadow.c`/`shadow.h`/`main.c` stripped of every `#if defined(CONFIG_PIGEON_WS)` block rather than
+  just Kconfig'd off, and `prj.conf` dropping `CONFIG_PIGEON_WS`/`CONFIG_PIGEON_SHELL` and every
+  Kconfig bump that existed only for WS+HTTPS concurrency (`CONFIG_NET_SOCKETS_TLS_MAX_CONTEXTS`,
+  `CONFIG_NET_MAX_CONN`, `CONFIG_PSA_WANT_ALG_SHA_1`) or WS-specific memory sizing (a smaller,
+  reasoned-not-independently-measured `CONFIG_MBEDTLS_HEAP_SIZE`, see that file's comments). Both
+  build clean (`west build` exit 0) post-split: `wifi_init` 9.62% flash/55.01% SRAM, `ws_init`
+  10.59% flash/70.18% SRAM. `ws_init` carries all of this sample's real-hardware history from before
+  the split — verified end-to-end on real hardware against staging: WS connect, `shadow_update` push
+  delivered in ~1s of a dashboard write, telemetry-over-WS in ~10ms (vs. ~10s over HTTPS), and a live
+  socket-steal recovery (rival connection closes this device's socket with 4009, device reconnects
+  and reclaims the slot in ~1s — see `~/pigeon/CLAUDE.md`'s `pigeon_ws_teardown()` writeup for the
+  context-leak bug this test caught). `wifi_init` in its post-split (WS-free) form is build-verified
+  only, same rigor as the rest of this port — no ESP32-C6 hardware has been run against it yet.
   `samples/west.yml`'s `hal_espressif` revision was corrected to
   `b7953b8019361d09e613f7011d2ccc41b984d087` (a prior pin referenced a commit that doesn't exist —
   sourced the fix from this workspace's own vendored `zephyr/west.yml`).
@@ -210,7 +231,9 @@ work around or skip it when scripting flashes/tests.
   them exist in the nRF91 samples (`https_init`/`coap_tcp_init`) because that hardware offloads TLS
   and the modem's own stack to a cellular modem instead of exercising Zephyr's native
   WiFi/TCP/mbedTLS path. This list is the single most useful thing here for the next non-cellular
-  board bring-up — read it before assuming a nRF91 pattern carries over:
+  board bring-up — read it before assuming a nRF91 pattern carries over. All apply to both
+  `wifi_init` and `ws_init` post-split (they share the same `wifi_connection_manager.c`/TLS/PSA
+  config) except #5 and #11, which are WS-specific and live only in `ws_init`'s `prj.conf` now:
 
   1. **No WiFi-join trigger**: `conn_mgr_all_if_connect()` alone is a no-op — it doesn't actually
      join a network. Fixed by firing `NET_REQUEST_WIFI_CONNECT_STORED` explicitly
@@ -248,11 +271,13 @@ work around or skip it when scripting flashes/tests.
   networking, no TAP/root setup needed) harness exercising the real `pigeon` code paths against the
   real staging server, never guessed from static analysis alone.
 
-  **Memory sizing** (evidence-based, not guessed): `CONFIG_MBEDTLS_HEAP_SIZE` bumped to 96KiB after
-  measuring a real concurrent HTTPS+WS peak of 52.8KiB via `mbedtls_memory_buffer_alloc_max_get()`
-  in the same native_sim harness (which itself needed `CONFIG_NET_SOCKETS_TLS_MAX_CONTEXTS=3` — at
-  the tree default of 1, concurrent HTTPS+WS fails at `tls_context_alloc()`'s pool before ever
-  reaching mbedTLS's own allocator, hiding the true number). Recurring
+  **Memory sizing** (evidence-based, not guessed; `ws_init`-specific, since it's the concurrent-
+  HTTPS+WS case — `wifi_init` reuses the smaller "HTTPS alone" measurement from the same round
+  instead, see its `prj.conf`): `CONFIG_MBEDTLS_HEAP_SIZE` bumped to 96KiB after measuring a real
+  concurrent HTTPS+WS peak of 52.8KiB via `mbedtls_memory_buffer_alloc_max_get()` in the same
+  native_sim harness (which itself needed `CONFIG_NET_SOCKETS_TLS_MAX_CONTEXTS=3` — at the tree
+  default of 1, concurrent HTTPS+WS fails at `tls_context_alloc()`'s pool before ever reaching
+  mbedTLS's own allocator, hiding the true number). Recurring
   `esp32c6_wifi_adapter: memory allocation failed` warnings on real hardware are a separate,
   unmeasurable-via-native_sim pool — confirmed non-fatal (didn't block the WS milestone or the
   socket-steal test above), tracked open as PidgeIoT task #15, not yet root-caused.

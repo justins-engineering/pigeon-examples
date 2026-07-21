@@ -1,11 +1,10 @@
 /** @file wifi_connection_manager.h
- *  @brief WiFi bring-up/teardown for the ESP32-C6 wifi_init sample, mirroring
+ *  @brief WiFi bring-up/teardown for the ESP32-C6 ws_init sample, mirroring
  *  https_init/coap_tcp_init's connection_manager.h (lte_connect/lte_disconnect)
  *  but over the generic conn_mgr_all_if_*() calls with no LTE modem beneath
- *  them. Identical to ws_init's copy of this file (both samples bring up the
- *  same WiFi transport; only the pigeon-level behavior on top differs) --
- *  see this repo's README ("giving WS its own sample") for why this isn't
- *  shared/symlinked.
+ *  them. Identical to wifi_init's copy of this file (both samples bring up
+ *  the same WiFi transport; only the pigeon-level behavior on top differs) --
+ *  see wifi_init's README section for why this isn't shared/symlinked.
  */
 #ifndef WIFI_CONNECTION_MANAGER_H
 #define WIFI_CONNECTION_MANAGER_H

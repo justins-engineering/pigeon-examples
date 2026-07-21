@@ -25,8 +25,18 @@ samples/
   shadow_model/           # builds pigeon_shadow_doc / pigeon_shadow_update_request
                            # structs and logs them (no transport yet)
   wifi_init/              # pigeon_init() with an HTTPS connector over WiFi
-                           # (ESP32-C6-DevKitC-1); no bootloader/FOTA -- see
+                           # (ESP32-C6-DevKitC-1), plain polling only -- no
+                           # CONFIG_PIGEON_WS; no bootloader/FOTA -- see
                            # "ESP32-C6-DevKitC-1 port" below
+  ws_init/                # Same ESP32-C6-DevKitC-1 board/HTTPS connector as
+                           # wifi_init, plus CONFIG_PIGEON_WS: the dedicated,
+                           # transport-focused demo of pigeon's persistent WS
+                           # push channel (shadow_update push, telemetry-over-
+                           # WS, HTTPS fallback, one-socket-per-pigeon) and
+                           # the WS-riding remote diagnostic shell. See
+                           # "ESP32-C6-DevKitC-1 port" below for why this is
+                           # a separate sample from wifi_init rather than a
+                           # Kconfig toggle inside it.
 ```
 
 Each sample is independently buildable. `https_init` and `coap_tcp_init` both
@@ -326,11 +336,38 @@ lands.
 `https_init`) exercising `pigeon`'s HTTPS connector over WiFi on an
 ESP32-C6, since `https_init`'s LTE bring-up (`connection_manager.c`'s
 `lte_lc_power_off()` etc.) and MCUboot/sysbuild setup are both nRF9160-
-specific and don't carry over. **Build-verified only** (`west build` exit
-0) — no ESP32-C6-DevKitC-1 is attached to this host (`lsusb` shows only
-the nRF9160's CP210x adapter), so nothing below has been flashed or run.
-"Builds cleanly + documented port gaps" is the target here, not a working
-WiFi port — see the gaps section below for what's genuinely unfinished.
+specific and don't carry over. `samples/ws_init` is the same board port
+plus `CONFIG_PIGEON_WS` — pigeon's persistent WebSocket push channel — and
+exists as its own sample rather than a Kconfig toggle inside `wifi_init`,
+so that WS is never the thing a reader has to opt *out* of to see plain
+HTTPS-over-WiFi, and so `wifi_init` stays a clean transport reference the
+same way `https_init`/`coap_tcp_init` are for their own transports. WS
+itself is additive to (never a replacement for) HTTPS polling — see
+`pigeon`'s `CLAUDE.md`/Kconfig, `CONFIG_PIGEON_WS` `depends on
+CONFIG_PIGEON_CONNECTOR_HTTPS` — and it's opt-in specifically for
+WiFi/mains-powered devices; constrained or cellular devices should keep
+polling HTTPS the way `https_init`/`coap_tcp_init` do, which is why neither
+of those samples nor `shadow_model` ever turns `CONFIG_PIGEON_WS` on.
+
+**Verification status differs between the two now.** `wifi_init` is
+**build-verified only** (`west build` exit 0) — no ESP32-C6-DevKitC-1 is
+attached to this host, so nothing in it has been flashed or run.
+`ws_init` carries this workspace's *actual* ESP32-C6 hardware history: it
+was `wifi_init` itself until the sample split below, and in that form was
+hardware-verified end to end against `dovecote-staging` (WS connect, a
+dashboard-pushed `shadow_update` applied in ~1s, telemetry-over-WS in
+~10ms vs. ~10s over HTTPS, and a live socket-steal reconnect test) — see
+`~/pigeon/CLAUDE.md` and this workspace's own `CLAUDE.md` for that
+writeup, plus `ws_init/prj.conf`'s inline comments for the eleven
+WiFi/native-mbedTLS-stack gaps (SNI, PEM parsing, PSA key/hash wants,
+heap wiring, etc.) found getting there, none of which exist in the
+nRF91 samples since they offload TLS to the cellular modem instead.
+`wifi_init`'s own `prj.conf` carries the same generic WiFi/TLS fixes
+(reused, not re-verified independently since it's the identical
+underlying stack) but drops everything WS-specific (the extra TLS
+context, the WS-only `PSA_WANT_ALG_SHA_1`, the remote diagnostic shell,
+and the larger concurrent-HTTPS+WS heap sizing) — see that file's own
+comments for exactly what carried over and what didn't.
 
 ### `hal_espressif` module (`samples/west.yml`)
 
@@ -365,17 +402,22 @@ so no board overlay was needed for that part.
 
 ```sh
 source .venv/bin/activate
-west build -d build_esp32c6 samples/wifi_init -b esp32c6_devkitc/esp32c6/hpcore
+west build -d build_wifi_init samples/wifi_init -b esp32c6_devkitc/esp32c6/hpcore
+west build -d build_ws_init samples/ws_init -b esp32c6_devkitc/esp32c6/hpcore
 ```
 
-Separate build dir (`build_esp32c6`, gitignored via the same `/build_*/`
-pattern as `build/`) so this never clobbers `https_init`'s `build/` — the
-nRF9160 FOTA e2e work depends on that directory staying intact. One-time
+Separate build dirs per sample (gitignored via the same `/build_*/`
+pattern as `build/`) so neither clobbers `https_init`'s `build/` — the
+nRF9160 FOTA e2e work depends on that directory staying intact, and only
+one sample/board combination can live in a given build dir at a time (see
+"Build directory conventions" in this workspace's `CLAUDE.md`). One-time
 setup needed beyond the usual `west update`: `west packages pip --install`
 (installs `esptool`, which this board's `zephyr/soc/espressif/common/CMakeLists.txt`
 hard-requires and which isn't pulled in by the base `pip install west`
-setup step). Verified 2026-07-17: `west build` exits 0, 8.76% flash /
-41.37% SRAM used, esptool successfully packages the ESP32-C6 image.
+setup step). Both build clean as of the sample split: `wifi_init` at 9.62%
+flash / 55.01% SRAM, `ws_init` at 10.59% flash / 70.18% SRAM (the extra
+SRAM is the WS TLS context, shell backend, and the larger concurrent-
+HTTPS+WS mbedTLS heap — see `ws_init/prj.conf`'s comments).
 
 ### Provisioning (same gitignored `prj.local.conf` pattern as `https_init`)
 
@@ -388,33 +430,37 @@ CONFIG_WIFI_CREDENTIALS_STATIC_PASSWORD="<wifi-psk>"
 EOF
 ```
 
-Unlike `CONFIG_PIGEON_ENDPOINT`/`_TOKEN`, the tracked `prj.conf` can't
-leave `CONFIG_WIFI_CREDENTIALS_STATIC_SSID` unset — Zephyr's `wifi_mgmt.c`
-has a compile-time `BUILD_ASSERT` requiring a non-empty SSID string even
-before `prj.local.conf` is merged in, so `prj.conf` ships a `"changeme"`
+Same fields for `samples/ws_init/prj.local.conf` — each sample directory
+has its own gitignored file, not a shared one. Unlike
+`CONFIG_PIGEON_ENDPOINT`/`_TOKEN`, the tracked `prj.conf` can't leave
+`CONFIG_WIFI_CREDENTIALS_STATIC_SSID` unset — Zephyr's `wifi_mgmt.c` has a
+compile-time `BUILD_ASSERT` requiring a non-empty SSID string even before
+`prj.local.conf` is merged in, so `prj.conf` ships a `"changeme"`
 placeholder that `prj.local.conf`'s real value overrides (Kconfig fragment
 merge order: `EXTRA_CONF_FILE` entries win over `prj.conf` for the same
 symbol).
 
-### Flashing (documented for when hardware arrives — not run)
+### Flashing
 
 ```sh
-west flash -d build_esp32c6
+west flash -d build_wifi_init   # or build_ws_init
 ```
 
 The board's `board.cmake` defaults to the `esp32` runner (esptool-based,
 same tool that already packaged the build output above) with `openocd` as
 a fallback; pass `--esp-device /dev/ttyUSBn` if more than one serial
-adapter is attached. **Do not run this against the currently-attached
-nRF9160** — no ESP32-C6-DevKitC-1 is connected as of this writing, and
-this command is untested against real hardware.
+adapter is attached. `ws_init` (as `wifi_init`, before the sample split)
+has actually been flashed and run against real ESP32-C6-DevKitC-1
+hardware — see the verification-status paragraph above; `wifi_init` in its
+current (WS-free) form has not.
 
 ### Documented port gaps
 
 Two real build-breaking incompatibilities were found and worked through
 (not around) to get a clean build; both are recorded inline in
-`samples/wifi_init/prj.conf`/`sysbuild.conf` where they were fixed, and
-summarized here:
+`samples/wifi_init/prj.conf`/`sysbuild.conf` (and identically in
+`samples/ws_init`'s copies, minus the WS-specific additions) where they
+were fixed, and summarized here:
 
 - **`CONFIG_WIFI=y` (`WIFI_ESP32`) auto-selects `MBEDTLS`, but only for
   ESP32's own WPA2/WPA3 handshake crypto — not a usable TLS *client*
