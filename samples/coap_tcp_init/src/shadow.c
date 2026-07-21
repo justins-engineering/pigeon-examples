@@ -10,6 +10,8 @@
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/reboot.h>
 
+#include "net/connection_manager.h"
+
 LOG_MODULE_REGISTER(shadow);
 
 /* pigeon_shadow_doc's target_config is an opaque JSON string as far as the
@@ -164,9 +166,16 @@ int shadow_sync(void) {
    * target_config JSON): "reboot" is a one-shot command rather than a
    * persistent field, so it's deliberately excluded from current_config
    * above -- otherwise it would never be seen as "changed" again and the
-   * device would reboot on every single poll once set true. */
+   * device would reboot on every single poll once set true.
+   *
+   * Power the modem off gracefully first (lte_disconnect() -> CFUN=0, see
+   * net/connection_manager.c) instead of calling sys_reboot() directly: an
+   * ungraceful reset trips the nRF91 modem's reset-loop protection and
+   * refuses LTE attach for 30 minutes. This mirrors the https_init sample,
+   * which fixed the same "reboot": true bug as part of task #20. */
   if (target.reboot) {
-    LOG_WRN("Shadow v%d requested reboot; rebooting now", doc.target_version);
+    LOG_WRN("Shadow v%d requested reboot; disconnecting and rebooting now", doc.target_version);
+    lte_disconnect();
     sys_reboot(SYS_REBOOT_COLD);
   }
 
