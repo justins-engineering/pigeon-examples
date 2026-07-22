@@ -1,0 +1,41 @@
+# PRIMARY west manifest for this workspace (task #8, 2026-07-22): plain
+# upstream Zephyr, no nRF Connect SDK. Every sample except the nRF91
+# cellular ones (https_init, coap_tcp_init -- see west.yml) builds against
+# this manifest: ESP32-C6 (wifi_init/ws_init), native_sim (shadow_model),
+# and any future non-cellular board this workspace grows.
+#
+# `import: true` on the zephyr project pulls in zephyr's own west.yml,
+# which already lists every HAL/module a vanilla Zephyr build needs
+# (hal_espressif, mcuboot, mbedtls, cmsis, trusted-firmware-m, etc.) via
+# its own group-filter -- unlike west.yml's nrf project, there's no
+# hand-maintained name-allowlist to keep in sync here, since upstream
+# Zephyr's manifest is already the authoritative "what does a Zephyr build
+# need" list.
+#
+# Switching this workspace to build the cellular (nRF91) samples means
+# reconfiguring against west.yml instead (a different topdir, or
+# `west config manifest.file west.yml && rm -rf zephyr nrf modules
+# bootloader nrfxlib && west update` in this one) -- the two manifests
+# vendor incompatible dependency trees (this one's zephyr is upstream
+# zephyrproject-rtos/zephyr, west.yml's is the NCS-forked zephyr pulled in
+# by the nrf project's own import) and cannot both be resident at once.
+# See this repo's README for the exact two-topdir setup instructions.
+manifest:
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v4.4.1
+      import: true
+
+  # pigeon is intentionally not a west project: ./pigeon is a local symlink
+  # (see ../pigeon_module.cmake, which adds it to ZEPHYR_EXTRA_MODULES by
+  # physical path) to the primary pigeon dev checkout, so local edits there
+  # are picked up immediately without a push/west-update round trip. Same
+  # as west.yml's own copy of this comment.
+
+  self:
+    path: samples

@@ -1,6 +1,6 @@
 [manifest]
 path = samples
-file = west.yml
+file = west-vanilla.yml
 
 [zephyr]
 base = zephyr
