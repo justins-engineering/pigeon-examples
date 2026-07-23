@@ -164,5 +164,7 @@ int lte_disconnect(void) {
     return err ? err : power_off_err;
   }
 
+  LOG_INF("Modem powered off gracefully (CFUN=0 confirmed)");
+
   return err;
 }
