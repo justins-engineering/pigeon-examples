@@ -1,3 +1,11 @@
+# SECONDARY manifest as of task #8 (2026-07-22): this workspace's default
+# is now west-vanilla.yml (plain upstream Zephyr, see that file and this
+# repo's README/CLAUDE.md). Reconfigure a topdir against this manifest
+# instead only for the nRF91 cellular samples (https_init, coap_tcp_init),
+# whose LTE connectivity genuinely needs the nRF Connect SDK's vendor
+# modules (nrf_modem/nrfxlib, lte_lc, modem_key_mgmt, TF-M _ns targets) --
+# not for ESP32-C6/native_sim/other non-cellular boards, which build
+# against west-vanilla.yml instead.
 manifest:
   remotes:
     - name: ncs
@@ -32,18 +40,13 @@ manifest:
           - zcbor
           - zephyr
 
-    - name: hal_espressif
-      url: https://github.com/zephyrproject-rtos/hal_espressif
-      # This SHA is copied from ../zephyr/west.yml's own hal_espressif entry
-      # (the vendored sdk-zephyr fork pinned by nrf's v3.4.0, i.e. this
-      # workspace's actual ncs-v3.4.0 zephyr tree) -- NOT the commit this
-      # entry originally carried as a comment (684c9e8f32e4373a2109855...),
-      # which doesn't exist in the upstream hal_espressif repo at all (`git
-      # cat-file -t` on it fails after a full fetch). Re-derive this from
-      # ../zephyr/west.yml if bumping the `nrf` project's revision above.
-      revision: b7953b8019361d09e613f7011d2ccc41b984d087
-      path: modules/hal/espressif
-      west-commands: west/west-commands.yml
+  # hal_espressif (Espressif's Zephyr HAL) used to be added here for the
+  # ESP32-C6 samples -- removed as part of task #8's split, since
+  # wifi_init/ws_init now build exclusively under west-vanilla.yml (which
+  # gets hal_espressif for free via upstream zephyr's own manifest import),
+  # and neither of this manifest's remaining samples (https_init,
+  # coap_tcp_init, both nRF91-only) touch ESP32 at all. This manifest is
+  # nRF Connect SDK/cellular-only now -- see the file-level comment above.
 
   # pigeon is intentionally not a west project: ./pigeon is a local symlink
   # (see ../pigeon_module.cmake, which adds it to ZEPHYR_EXTRA_MODULES by

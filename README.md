@@ -7,27 +7,51 @@ and pulled in as a west module via `samples/pigeon_module.cmake`).
 ## Layout
 
 This directory is a west workspace: `samples/` is the manifest ("self") repo, and
-`nrf/`, `zephyr/`, `bootloader/`, `modules/`, `nrfxlib/` are vendored checkouts
-fetched by `west update` (gitignored, not part of this repo). `modules/hal/espressif`
-(the `hal_espressif` west project, added for the ESP32-C6 port below) is vendored
-the same way.
+`zephyr/`, `modules/`, `bootloader/` (plus, only under the NCS manifest, `nrf/`/
+`nrfxlib/`) are vendored checkouts fetched by `west update` (gitignored, not part
+of this repo).
+
+**Two west manifests live side by side in `samples/`, as of task #8 (2026-07-22)**:
+
+- `west-vanilla.yml` -- **the primary manifest**, plain upstream Zephyr
+  (`import: true` off the `zephyr` project, no vendor SDK). Everything except
+  the nRF91 cellular samples builds against this: ESP32-C6 (`wifi_init`,
+  `ws_init`), `native_sim` (`shadow_model`), and any future non-cellular board.
+  This is what a bare `west init -l samples` (no `--mf`) picks up, since
+  `.west/config`'s default `manifest.file` now points here.
+- `west.yml` -- the nRF Connect SDK manifest, now scoped to **only** the
+  boards whose connectivity genuinely needs Nordic's vendor modules:
+  `https_init`/`coap_tcp_init` (nRF9160/nRF9151, cellular modem, TF-M `_ns`
+  targets). Reconfigure a topdir against this instead only when building
+  those two samples.
+
+A single west topdir can only have one manifest active at a time (one
+`.west/config`), and the two manifests vendor mutually incompatible
+dependency trees (this workspace's `zephyr/` under `west-vanilla.yml` is
+upstream `zephyrproject-rtos/zephyr`; under `west.yml` it's the NCS-forked
+`sdk-zephyr`) -- see "Setup" below for how to keep both around.
 
 ```
 samples/
-  west.yml              # west manifest (self path: samples)
-  pigeon_module.cmake    # shared: wires ../../pigeon in via ZEPHYR_EXTRA_MODULES
+  west-vanilla.yml        # PRIMARY west manifest (self path: samples) --
+                           # plain upstream Zephyr, no nRF Connect SDK
+  west.yml                # SECONDARY west manifest -- nRF Connect SDK,
+                           # cellular (nRF91) samples only
+  pigeon_module.cmake     # shared: wires ../../pigeon in via ZEPHYR_EXTRA_MODULES
   https_init/             # pigeon_init() with an HTTPS connector; shadow sync,
                            # MCUmgr DFU, MCUboot/sysbuild, graceful modem shutdown,
-                           # CONFIG_PIGEON_FOTA -- nRF9160 only
+                           # CONFIG_PIGEON_FOTA -- nRF9160 only, west.yml (NCS)
   coap_tcp_init/          # pigeon_init() with a CoAP-over-TLS/TCP connector
                            # (TLS PSK fields; no on-device UDP support yet);
                            # same shadow-sync loop as https_init, no bootloader
+                           # -- nRF9160 only, west.yml (NCS)
   shadow_model/           # builds pigeon_shadow_doc / pigeon_shadow_update_request
-                           # structs and logs them (no transport yet)
+                           # structs and logs them (no transport yet) --
+                           # west-vanilla.yml
   wifi_init/              # pigeon_init() with an HTTPS connector over WiFi
                            # (ESP32-C6-DevKitC-1), plain polling only -- no
                            # CONFIG_PIGEON_WS; no bootloader/FOTA -- see
-                           # "ESP32-C6-DevKitC-1 port" below
+                           # "ESP32-C6-DevKitC-1 port" below -- west-vanilla.yml
   ws_init/                # Same ESP32-C6-DevKitC-1 board/HTTPS connector as
                            # wifi_init, plus CONFIG_PIGEON_WS: the dedicated,
                            # transport-focused demo of pigeon's persistent WS
@@ -36,7 +60,7 @@ samples/
                            # the WS-riding remote diagnostic shell. See
                            # "ESP32-C6-DevKitC-1 port" below for why this is
                            # a separate sample from wifi_init rather than a
-                           # Kconfig toggle inside it.
+                           # Kconfig toggle inside it. -- west-vanilla.yml
 ```
 
 Each sample is independently buildable. `https_init` and `coap_tcp_init` both
@@ -51,19 +75,41 @@ unconditionally.
 
 ## Setup
 
+Default (vanilla Zephyr -- `wifi_init`, `ws_init`, `shadow_model`):
+
 ```sh
 python3 -m venv .venv && source .venv/bin/activate
 pip install west
-west init -l samples
+west init -l samples          # picks up west-vanilla.yml (the default manifest.file)
 west update
 ```
 
+For the nRF91 cellular samples (`https_init`, `coap_tcp_init`), use a
+**separate topdir** pointed at `west.yml` instead -- the two manifests'
+vendored trees aren't interchangeable, so don't try to reuse one topdir for
+both:
+
+```sh
+mkdir ../pigeon-examples-ncs && cd ../pigeon-examples-ncs
+python3 -m venv .venv && source .venv/bin/activate
+pip install west
+west init -l ../pigeon-examples/samples --mf west.yml
+west update
+```
+
+(Or, inside a single existing vanilla topdir, `west config manifest.file
+west.yml && rm -rf zephyr modules bootloader && west update` to switch it
+over in place -- slower, since it re-fetches a different `zephyr`/`modules`
+tree from scratch, but avoids a second checkout on disk.)
+
+Either way, `../pigeon` is linked in the same way (`pigeon_module.cmake`,
+see "Layout" above) -- there's exactly one `pigeon` dev checkout regardless
+of which manifest a given topdir builds against.
+
 ## Building a sample
 
-`coap_tcp_init` and `shadow_model` have no bootloader and build for
-`native_sim` for quick local iteration (`coap_tcp_init`'s LTE bring-up skips
-the graceful-modem-shutdown path there — no real modem, and
-`CONFIG_LTE_LINK_CONTROL` isn't available on that SoC):
+`shadow_model` has no bootloader and builds for `native_sim` for quick local
+iteration:
 
 ```sh
 source .venv/bin/activate
@@ -71,9 +117,14 @@ west build -d build samples/shadow_model -b native_sim/native/64
 ./build/shadow_model/zephyr/zephyr.exe
 ```
 
+`wifi_init`/`ws_init` build for real ESP32-C6-DevKitC-1 hardware -- see
+"ESP32-C6-DevKitC-1 port" below for board target/provisioning details.
+
 `https_init` boots under MCUboot via sysbuild (see `sysbuild.conf`), and
-MCUboot doesn't support the native/`native_sim` SoC — so unlike the other two
-samples, it only builds for real hardware:
+MCUboot doesn't support the native/`native_sim` SoC — so unlike
+`coap_tcp_init`, it only builds for real hardware. Both nRF91 samples need a
+topdir configured against `west.yml`, not the default `west-vanilla.yml` --
+see "Setup" above:
 
 ```sh
 source .venv/bin/activate
@@ -81,7 +132,9 @@ west build -d build samples/https_init -b circuitdojo_feather/nrf9160/ns
 ```
 
 `coap_tcp_init` also builds for that same board target (no sysbuild/MCUboot
-involved, so it isn't subject to the `native_sim` restriction above):
+involved, so it isn't subject to the `native_sim` restriction above; its LTE
+bring-up skips the graceful-modem-shutdown path on `native_sim` too, for the
+same no-real-modem reason):
 
 ```sh
 source .venv/bin/activate
@@ -261,6 +314,14 @@ come from the same build.
 
 ## Firmware updates (`CONFIG_PIGEON_FOTA`)
 
+**Backend note (task #8, 2026-07-22):** `pigeon`'s FOTA client now has two
+selectable backends -- see `../pigeon/CLAUDE.md`/`README.md`. This sample's
+`prj.conf` explicitly sets `CONFIG_PIGEON_FOTA_NCS=y` to keep using the
+original nRF Connect SDK `dfu_target` backend, since that's the one that's
+actually been run through real hardware (see "Fallback / revert behavior"
+below) -- not the new vendor-neutral upstream `flash_img`/
+`boot_request_upgrade` default, which hasn't been hardware-verified yet.
+
 `https_init`'s `prj.conf` turns on `pigeon`'s opt-in FOTA client
 (`CONFIG_PIGEON_FOTA`, see `../pigeon/README.md`'s "Firmware updates"
 section for the full API/Kconfig writeup) alongside
@@ -369,23 +430,22 @@ context, the WS-only `PSA_WANT_ALG_SHA_1`, the remote diagnostic shell,
 and the larger concurrent-HTTPS+WS heap sizing) — see that file's own
 comments for exactly what carried over and what didn't.
 
-### `hal_espressif` module (`samples/west.yml`)
+### `hal_espressif` module
 
-Adds the `hal_espressif` west project (Espressif's Zephyr HAL, needed for
-any ESP32 board target) as a plain additive entry — no existing project's
-revision was touched. The pin is **not** the commit originally parked in
-this file as a comment: that SHA
-(`684c9e8f32e4373a21098559f748f06915f950c9`) doesn't exist in the upstream
-`hal_espressif` repo at all (`git fetch` + `git cat-file -t` on it fails
-even after a full fetch of every branch). The correct pin —
-`b7953b8019361d09e613f7011d2ccc41b984d087` — is copied from this
-workspace's own vendored `zephyr/west.yml` (the `sdk-zephyr` fork pinned by
-`nrf`'s `v3.4.0`), i.e. the actual `hal_espressif` revision this
-workspace's Zephyr tree expects. Verified with `west update hal_espressif`
-(clean checkout, no errors) and `west blobs fetch hal_espressif` (fetches
-`libcore.a`/`libnet80211.a`/`libpp.a`/etc. for every ESP32 variant,
-including `esp32c6` — WiFi needs these prebuilt binary blobs; they're
-gitignored artifacts, not committed).
+As of task #8, `wifi_init`/`ws_init` build under `west-vanilla.yml`, whose
+single `zephyr` project (`import: true`, plain upstream Zephyr) already
+lists `hal_espressif` (Espressif's Zephyr HAL, needed for any ESP32 board
+target) in its own manifest's default-included `hal` group -- no
+hand-maintained entry needed in this repo's manifest at all, unlike before
+task #8 (when both ESP32 and nRF91 samples shared a single NCS-based
+`west.yml`, which required adding `hal_espressif` there explicitly by hand
+-- see git history for that pin's own troubleshooting story, since it's no
+longer present in this repo's manifest files).
+
+Either way, don't forget `west blobs fetch hal_espressif` after `west
+update` -- WiFi needs prebuilt binary blobs (`libcore.a`/`libnet80211.a`/
+`libpp.a`/etc. for every ESP32 variant, including `esp32c6`) that aren't
+regular git-tracked source; they're gitignored artifacts, not committed.
 
 ### Board target
 
