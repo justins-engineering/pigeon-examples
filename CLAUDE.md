@@ -16,6 +16,16 @@ repo's samples must stay consistent with. This file only covers workspace mechan
 
 ## West workspace structure
 
+**Two-manifest gotcha for scratch workspaces (post task #8, found 2026-07-23):** since
+`west-vanilla.yml` became this topdir's default manifest, do NOT build the NCS flavor in a
+scratch workspace that merely *symlinks* the vendored trees back into this live topdir —
+Zephyr's Kconfig module-dir resolution (notably sysbuild's MCUboot sub-image) walks the
+symlink-resolved real path to the nearest `.west`, finds THIS topdir's config
+(`west-vanilla.yml`), and silently resolves the wrong manifest context
+(`ZEPHYR_NRF_MODULE_DIR` empty → `nrf/modules/mcuboot/.../Kconfig` not found). Hardlink-copy
+the trees into the scratch topdir instead (`cp -al` — instant, no extra disk), with the
+scratch topdir's own `.west/config` naming the flavor you're building.
+
 This directory *is* the west workspace (`west topdir`), and `samples/` is the manifest ("self")
 repo — the one piece of this tree with its own independent git history in the usual sense of "the
 repo you'd clone." Everything else here is either vendored (gitignored, fetched by `west update`)
