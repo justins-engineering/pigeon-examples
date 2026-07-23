@@ -36,5 +36,6 @@ endforeach()
 target_sources(app PRIVATE
   src/main.c
   src/shadow.c
+  src/heap_monitor.c
   src/net/wifi_connection_manager.c
 )

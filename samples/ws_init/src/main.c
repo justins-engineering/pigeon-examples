@@ -2,6 +2,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+#include "heap_monitor.h"
 #include "net/wifi_connection_manager.h"
 #include "shadow.h"
 
@@ -41,6 +42,12 @@ int main(void) {
     LOG_WRN("pigeon_ws_start() failed: %d (falling back to HTTPS polling)", err);
   }
 #endif
+
+  /* Task #15: soak-test instrumentation for the recurring real-hardware
+   * "esp32c6_wifi_adapter: memory allocation failed" reports -- see
+   * heap_monitor.h. Started after wifi_connect()/pigeon_init() so the first
+   * sample already reflects post-connect steady state, not boot-time churn. */
+  heap_monitor_start();
 
   /* shadow_loop() polls forever; it does not return under normal
    * operation. */
