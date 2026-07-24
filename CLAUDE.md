@@ -289,8 +289,19 @@ work around or skip it when scripting flashes/tests.
   default of 1, concurrent HTTPS+WS fails at `tls_context_alloc()`'s pool before ever reaching
   mbedTLS's own allocator, hiding the true number). Recurring
   `esp32c6_wifi_adapter: memory allocation failed` warnings on real hardware are a separate,
-  unmeasurable-via-native_sim pool — confirmed non-fatal (didn't block the WS milestone or the
-  socket-steal test above), tracked open as PidgeIoT task #15, not yet root-caused.
+  unmeasurable-via-native_sim pool — didn't block the WS milestone or the socket-steal test above,
+  but turned out NOT to be non-fatal under a long enough soak: task #15's follow-up soak (30-60min+,
+  past this milestone's short-run window) caught a real hard panic at 42-60min uptime, root-caused to
+  a rare assert inside Espressif's closed-source `libnet80211.a` WiFi MAC blob (not a heap-sizing
+  issue — two separate soaks with `sys_heap_runtime_stats_get()`/`malloc_runtime_stats_get()`
+  instrumentation, added permanently as `ws_init/src/heap_monitor.c`, ruled out resource exhaustion
+  in either plausible heap). Mitigated task #45 via `pigeon`'s `CONFIG_PIGEON_REBOOT_ON_FATAL` (primary — a
+  `k_sys_fatal_error_handler()` override, hardware-verified to reboot in ~200ms on a forced fault
+  instead of hanging forever) and `CONFIG_PIGEON_WATCHDOG` (secondary, for silent non-fatal liveness
+  stalls) — see `~/pigeon/CLAUDE.md` for the full writeup and this repo's own
+  `docs/upstream-issues/` for two drafted-not-posted upstream reports (the `libnet80211.a` crash
+  trace, and a separate Zephyr `wdt_esp32.c` ms→ticks driver bug task #45's verification found along
+  the way).
 
 ### Native-sim gotcha: no real modem
 
