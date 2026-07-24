@@ -1,0 +1,90 @@
+#
+# asset_tracker: GNSS + cellular reference sample.
+#
+
+menu "Asset tracker sample"
+
+config ASSET_TRACKER_SIM_GPS
+  bool "Simulate GPS fixes instead of using real GNSS"
+  default n
+  help
+    Emits a synthetic, clearly-marked moving track (a small circuit around
+    a configurable base coordinate, see ASSET_TRACKER_SIM_* below) instead
+    of talking to the nRF91's real GNSS receiver. GNSS indoors will very
+    likely never acquire a real fix -- this lets the end-to-end telemetry
+    pipeline and dashboard be exercised without a clear sky view (indoors,
+    CI, a desk). gps_fix_quality reports 2 ("simulated") whenever this is
+    on, rather than 0 ("no fix")/1 ("real fix"), so a real dashboard can
+    always tell simulated data apart from a genuine fix. Off by default --
+    a tracker sample should talk to real GNSS unless a reader deliberately
+    opts into the indoor demo path.
+
+if ASSET_TRACKER_SIM_GPS
+
+config ASSET_TRACKER_SIM_BASE_LAT
+  string "Simulated track base latitude (decimal degrees)"
+  default "45.523064"
+  help
+    Center of the simulated circuit (default: a point in Portland, OR --
+    an arbitrary but plausible coordinate, not this device's actual
+    location). See gnss.c's sim_track_step().
+
+config ASSET_TRACKER_SIM_BASE_LON
+  string "Simulated track base longitude (decimal degrees)"
+  default "-122.676483"
+
+config ASSET_TRACKER_SIM_RADIUS_M
+  int "Simulated circuit radius (meters)"
+  default 50
+  help
+    Radius of the simulated circular track around the base coordinate.
+    50m is small enough to look like a single-parking-lot asset (e.g. a
+    yard tractor, a job-site generator) rather than a highway vehicle.
+
+config ASSET_TRACKER_SIM_PERIOD_SEC
+  int "Simulated circuit period (seconds per full lap)"
+  default 300
+  range 10 86400
+  help
+    How long one full simulated lap takes. Combined with
+    ASSET_TRACKER_SIM_RADIUS_M this determines the simulated gps_speed_mps
+    reported alongside the position.
+
+endif # ASSET_TRACKER_SIM_GPS
+
+if !ASSET_TRACKER_SIM_GPS
+
+config ASSET_TRACKER_GNSS_FIX_INTERVAL_SEC
+  int "GNSS periodic fix interval (seconds)"
+  range 10 65535
+  default 120
+  help
+    Passed to nrf_modem_gnss_fix_interval_set(). Periodic (not continuous)
+    navigation mode: an asset tracker cares about "where is it now, and
+    where was it a couple minutes ago", not a continuous high-rate track,
+    and periodic mode gives LTE more of the shared radio between fixes
+    than continuous mode would.
+
+config ASSET_TRACKER_GNSS_FIX_RETRY_SEC
+  int "GNSS fix retry timeout (seconds)"
+  range 0 65535
+  default 120
+  help
+    Upper bound on how long GNSS is allowed to search per attempt before
+    giving up until the next fix_interval -- see
+    nrf_modem_gnss_fix_retry_set(). Matters most indoors, where a fix may
+    never come: without this, GNSS would keep the receiver running
+    indefinitely, burning power on a search that was never going to
+    succeed this attempt.
+
+endif # !ASSET_TRACKER_SIM_GPS
+
+module = ASSET_TRACKER
+module-str = Asset tracker sample
+source "$(ZEPHYR_BASE)/subsys/logging/Kconfig.template.log_config"
+
+endmenu
+
+menu "Zephyr Kernel"
+source "Kconfig.zephyr"
+endmenu

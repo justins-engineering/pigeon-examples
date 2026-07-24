@@ -210,6 +210,32 @@ work around or skip it when scripting flashes/tests.
 - **`shadow_model`** — smallest sample; just builds/logs `pigeon_shadow_doc`/
   `pigeon_shadow_update_request`, no network transport. Good smoke test that the shared data
   structures still compile after a `pigeon` header change, independent of any connector work.
+- **`asset_tracker`** (added 2026-07-24) — `https_init`'s HTTPS connector plus the nRF91's built-in
+  GNSS on a Circuit Dojo nRF9151 Feather, reporting `gps_lat`/`gps_lon`/`gps_alt_m`/`gps_speed_mps`/
+  `gps_heading_deg`/`gps_sats`/`gps_fix_quality` as ordinary numeric telemetry (dovecote needed zero
+  backend changes — telemetry is already schemaless key/value). LTE/GNSS coexistence relies entirely
+  on the modem's own scheduling (`CONFIG_LTE_NETWORK_MODE_LTE_M_GPS` puts GPS in the system-mode
+  bitmask, same mechanism nRF's own `nrf/samples/cellular/gnss` reference sample uses) rather than
+  manual `CFUN` toggling — no coexistence logic lives in this sample's own code at all.
+  `gps_sats`/`gps_fix_quality` are reported every poll even with no fix (expected indoors), so a
+  dashboard can tell "GNSS is trying, 0 sats" apart from "device never attempted a fix" instead of
+  both collapsing to no data. `CONFIG_ASSET_TRACKER_SIM_GPS` (off by default) substitutes a
+  synthetic circular track (always reporting `gps_fix_quality=2`, never `1`, so it can never be
+  mistaken for a real fix) for indoor/CI demos where GNSS will very likely never converge — the
+  circular-track math was independently verified via a standalone haversine-distance check before
+  being built into firmware. No sysbuild/MCUboot (no FOTA in this sample), but still needed
+  `boards/circuitdojo_feather_nrf9151_ns.overlay` to rebalance slot0 to 128 KB secure/320 KB
+  nonsecure (same mechanism `https_init`'s overlay uses, for a different reason — this sample's own
+  footprint, not a second MCUboot slot; the stock 192 KB nonsecure split overflowed by ~5KB with
+  real device credentials baked in). Also turns on `CONFIG_PIGEON_REBOOT_ON_FATAL`/
+  `CONFIG_PIGEON_WATCHDOG` (task #45) — a field asset tracker is the poster child for needing
+  unattended wedge recovery. Build-verified only as of this writing (both the real-GNSS and
+  `CONFIG_ASSET_TRACKER_SIM_GPS` configs, `west build` exit 0) — the physical nRF9151 Feather this
+  was written for wasn't reachable via its expected `probe-rs`/CMSIS-DAP path when this sample was
+  built (only a bare console UART enumerated, no debug-probe USB interface); see this repo's README
+  "GNSS asset tracker" section for the full state and what's still needed before real-hardware
+  verification (indoor GNSS status + `CONFIG_ASSET_TRACKER_SIM_GPS` telemetry reaching the real
+  backend) can happen. A real outdoor GNSS fix was never in scope for this sample's verification.
 - **`wifi_init` / `ws_init`** (added 2026-07-19, task #27; `CONFIG_PIGEON_WS` landed and
   hardware-verified 2026-07-20, task #33; split into two samples 2026-07-21, task #37) —
   ESP32-C6-DevKitC-1 board bring-up. Originally one sample (`wifi_init`) that grew `CONFIG_PIGEON_WS`

@@ -61,6 +61,23 @@ samples/
                            # "ESP32-C6-DevKitC-1 port" below for why this is
                            # a separate sample from wifi_init rather than a
                            # Kconfig toggle inside it. -- west-vanilla.yml
+  asset_tracker/          # pigeon_init() with an HTTPS connector plus the
+                           # nRF91's built-in GNSS (Circuit Dojo nRF9151
+                           # Feather) -- reports gps_lat/gps_lon/gps_alt_m/
+                           # gps_speed_mps/gps_heading_deg/gps_sats/
+                           # gps_fix_quality as ordinary telemetry, degrading
+                           # gracefully to "0 sats, no fix" indoors rather
+                           # than failing; CONFIG_ASSET_TRACKER_SIM_GPS
+                           # substitutes a synthetic moving track for demos
+                           # where a real fix will never come. Also turns on
+                           # CONFIG_PIGEON_REBOOT_ON_FATAL/_WATCHDOG (task
+                           # #45) -- a field asset tracker is the poster
+                           # child for unattended wedge recovery. No
+                           # MCUboot/sysbuild (no FOTA in this sample), but
+                           # still needs a board overlay to rebalance
+                           # slot0's secure/nonsecure split -- see
+                           # "GNSS asset tracker" below. -- nRF9151 only,
+                           # west.yml (NCS)
 ```
 
 Each sample is independently buildable. `https_init` and `coap_tcp_init` both
@@ -140,6 +157,22 @@ same no-real-modem reason):
 source .venv/bin/activate
 west build -d build samples/coap_tcp_init -b circuitdojo_feather/nrf9160/ns
 ```
+
+`asset_tracker` also needs a `west.yml` (NCS) topdir, same as the other two
+nRF91 samples, and its custom out-of-tree board (`circuitdojo_feather_nrf9151`,
+`samples/boards/circuitdojo/feather_nrf9151/`) needs `BOARD_ROOT` pointed at
+this repo's `samples/` directory:
+
+```sh
+source .venv/bin/activate
+west build -d build samples/asset_tracker -b circuitdojo_feather_nrf9151/nrf9151/ns -- -DBOARD_ROOT=$(pwd)/samples
+```
+
+No sysbuild/MCUboot here (unlike `https_init`) -- this sample doesn't do
+FOTA, so it's a single plain image. See "GNSS asset tracker" below for the
+board overlay this still needs (a slot0 secure/nonsecure rebalance, same
+mechanism `https_init`'s board overlay uses, for a different reason -- this
+sample's own flash footprint, not a second MCUboot slot).
 
 The `../pigeon` repo's `.vscode/settings.json` points clangd at
 `build/https_init/compile_commands.json` here (via a `pigeon/build` symlink to
@@ -390,6 +423,130 @@ downloaded, flashed, or booted on a CircuitDojo nRF9160 Feather yet. Update
 this section with a real hardware e2e result (mirroring the log-upload
 section's "Verified end-to-end on real hardware" note above) once that
 lands.
+
+## GNSS asset tracker
+
+`samples/asset_tracker` pairs `pigeon`'s HTTPS connector with the nRF91's
+built-in GNSS receiver on a Circuit Dojo nRF9151 Feather -- cellular +
+GPS is the canonical "asset tracker" combo, and unlike `wifi_init`/`ws_init`
+it needed no new transport work in `pigeon` itself, only a new position
+source feeding the existing `pigeon_set_shadow_param()`/`pigeon_shadow_flush()`
+telemetry path. Structurally it's `https_init` minus FOTA/log-upload (see
+"Design choices" below) plus `src/gnss.c`.
+
+### Design choices
+
+**LTE/GNSS coexistence.** The nRF91 shares one radio between LTE and GNSS.
+Rather than manually toggling `CFUN` to hand the radio back and forth (the
+"periodic: release LTE, get a fix, reattach" approach), this sample relies
+on the modem's own automatic scheduling: `CONFIG_LTE_NETWORK_MODE_LTE_M_GPS`
+puts GPS in the modem's system-mode bitmask, which lets it interleave GNSS
+search/tracking windows with LTE reception on its own -- the same
+mechanism nRF's own `nrf/samples/cellular/gnss` reference sample relies on
+(no manual coexistence logic in that sample either). `main.c` calls
+`tracker_gnss_init()` once, right after `pigeon_init()`, and from then on
+GNSS and LTE just run concurrently with nothing in this app's control flow
+coordinating between them. PSM (`CONFIG_LTE_PSM_REQ`) is also turned on,
+giving GNSS longer idle windows to search in between LTE's own paging
+cadence -- same requested PSM parameters (8h periodic TAU / 6s active
+time) nRF's GNSS sample uses, a reasoned starting point rather than a
+tuned one. GNSS itself runs in periodic (not continuous) navigation mode
+(`CONFIG_ASSET_TRACKER_GNSS_FIX_INTERVAL_SEC`, default 120s, with a bounded
+`CONFIG_ASSET_TRACKER_GNSS_FIX_RETRY_SEC` search timeout per attempt, also
+120s) -- an asset tracker cares about "where is it now and a couple
+minutes ago," not a continuous high-rate track, and periodic mode leaves
+LTE more of the shared radio between fixes.
+
+**Telemetry key set** (`src/shadow.c`'s `report_position()`, all numeric so
+they're graphable in `fancier`'s telemetry-history graphs): `gps_lat`,
+`gps_lon`, `gps_alt_m`, `gps_speed_mps`, `gps_heading_deg`, `gps_sats`,
+`gps_fix_quality` (0 = no fix, 1 = real fix, 2 = simulated -- see below).
+`gps_sats`/`gps_fix_quality` are reported on *every* poll, fix or no fix --
+GNSS indoors will very likely never converge, and reporting "0 sats, no
+fix" honestly (rather than omitting the keys entirely until a fix shows
+up) is what lets a dashboard tell "GNSS is trying" apart from "this
+device never even attempted a fix." The five position fields are only
+reported once `gps_fix_quality` says there's an actual position to report.
+`uptime_s` (the same standard key `https_init`/`coap_tcp_init` report) is
+folded in too, so the existing telemetry-history/connection-state dashboard
+story keeps working unchanged for this sample.
+
+**Simulated GPS mode** (`CONFIG_ASSET_TRACKER_SIM_GPS`, off by default):
+indoors, GNSS will very likely never acquire a real fix at all -- this
+Kconfig substitutes a synthetic, clearly-marked moving track (a small
+circle, default 50m radius / 300s per lap, around a configurable base
+coordinate -- see the `CONFIG_ASSET_TRACKER_SIM_GPS` branch of `gnss.c`'s
+`tracker_gnss_get_latest()`) computed purely from `k_uptime_get()`, no
+modem/GNSS interaction at all. It always reports
+`gps_fix_quality=2`, never `1`, so a real fix and this demo path can never
+be mistaken for each other on a dashboard. This is what makes the
+end-to-end pipeline (device → dovecote → `fancier`'s telemetry graphs)
+demonstrable indoors or in CI, where a real outdoor fix is never expected.
+The circular-track math was verified independently (a standalone Python
+check confirmed every sampled point sits exactly `ASSET_TRACKER_SIM_RADIUS_M`
+meters from the base coordinate via the haversine formula, and speed/heading
+match the expected constant-angular-velocity values) before ever building it
+into firmware.
+
+**No MCUboot/sysbuild.** Unlike `https_init`, this sample doesn't do FOTA,
+so it's a single plain image rather than a dual-slot MCUboot build --
+simpler is fine when there's no second image competing for flash. It still
+needed `boards/circuitdojo_feather_nrf9151_ns.overlay`, though: the stock
+192 KB nonsecure flash split isn't enough for HTTPS+TLS+cellular+GNSS with
+any reasonable logging (confirmed by an actual failing link, "region FLASH
+overflowed," before adding the overlay -- not assumed up front). The
+overlay rebalances slot0 to 128 KB secure / 320 KB nonsecure, the same
+split and the same delete-then-redefine mechanism `https_init`'s overlay
+uses, for a different reason (this sample's own footprint, not a second
+MCUboot slot) -- `slot1` is left untouched at its stock size, since unlike
+`https_init` this sample never touches it at all.
+
+**Wedge recovery** (`CONFIG_PIGEON_REBOOT_ON_FATAL`/`CONFIG_PIGEON_WATCHDOG`,
+task #45): both turned on, zero app code needed beyond the Kconfig -- a
+field asset tracker parked somewhere unattended is the poster child for
+needing to recover from a wedge on its own, see `~/pigeon/CLAUDE.md` for
+the full diagnosis/writeup these two options came from.
+
+### Build verification
+
+```sh
+source .venv/bin/activate
+west build -d build samples/asset_tracker -b circuitdojo_feather_nrf9151/nrf9151/ns -- -DBOARD_ROOT=$(pwd)/samples
+```
+
+Both configurations build clean (`west build` exit 0):
+
+| Config | FLASH (of 320 KB) | RAM (of 128 KB) |
+| --- | --- | --- |
+| Real GNSS (default) | 200172 B (61.09%) | 62432 B (47.63%) |
+| `CONFIG_ASSET_TRACKER_SIM_GPS=y` | 206580 B (63.04%) | 62080 B (47.36%) |
+
+### Hardware verification
+
+Real device secrets (`CONFIG_PIGEON_ENDPOINT`/`CONFIG_PIGEON_TOKEN`) came
+from an already-provisioned staging pigeon, following this repo's usual
+gitignored-`prj.local.conf` pattern -- never committed, never printed.
+
+**Not yet flashed to the physical board.** The task's premise was a Circuit
+Dojo nRF9151 Feather reachable over `probe-rs` via an onboard RP2040
+CMSIS-DAP debug probe. As of this writing, `probe-rs list` only sees the
+J-Link (the existing nRF9160 board) and the ESP32-C6's JTAG/serial --
+no CMSIS-DAP device enumerates, and there's no `/dev/ttyACM3`. What *is*
+newly attached is a bare CP2102N USB-serial adapter, which looks like just
+a console UART, not the debug probe's own USB interface -- possibly the
+board's debug-probe cable isn't connected yet, or needs a second USB port.
+Once the probe is reachable, flashing/monitoring should follow the same
+pattern as `https_init`'s (see "Flashing `https_init` to real hardware"
+above), swapped to `probe-rs run --chip nRF9151_xxAA` instead of
+`nrfutil`/J-Link, and the expected boot sequence is the same shape (LTE
+attach, then either real GNSS status lines or, in sim mode, the
+"SIMULATED GPS mode enabled" warning followed by a moving `gps_lat`/
+`gps_lon` telemetry stream every `CONFIG_ASSET_TRACKER_GNSS_FIX_INTERVAL_SEC`/
+shadow poll).
+
+**Known, honest gap**: no real outdoor GNSS fix has been (or is expected to
+be) exercised -- this board hasn't left a desk. `CONFIG_ASSET_TRACKER_SIM_GPS`
+exists specifically so the rest of the pipeline doesn't have to wait on that.
 
 ## ESP32-C6-DevKitC-1 port
 

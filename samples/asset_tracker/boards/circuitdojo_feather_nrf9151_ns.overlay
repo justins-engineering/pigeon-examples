@@ -1,0 +1,34 @@
+/* Rebalances slot0's stock secure/nonsecure split (256 KB secure / 192 KB
+ * nonsecure) to 128 KB secure / 320 KB nonsecure -- same split, same total
+ * slot0_partition size (448 KB, unchanged), and the same mechanism
+ * (delete-then-redefine the two child nodes) as https_init's board
+ * overlay of the same name.
+ *
+ * This sample has no MCUboot/sysbuild (see this sample's README for why),
+ * so it's a single plain image rather than a dual-slot MCUboot build --
+ * but it still links against slot0_ns_partition by default, and the
+ * stock 192 KB nonsecure split isn't enough headroom for
+ * HTTPS+TLS+cellular+GNSS with any reasonable log verbosity (confirmed by
+ * an actual failing link before adding this overlay -- "region FLASH
+ * overflowed", not assumed up front). slot1 is left untouched at its
+ * stock size/location -- unlike https_init this sample never uses it (no
+ * FOTA), but leaving it alone keeps this overlay a minimal, obviously-
+ * correct rebalance of the one partition that actually matters here,
+ * rather than a wholesale flash map rewrite.
+ */
+/delete-node/ &slot0_s_partition;
+/delete-node/ &slot0_ns_partition;
+
+&slot0_partition {
+  slot0_s_partition: partition@0 {
+    compatible = "zephyr,mapped-partition";
+    label = "image-0-secure";
+    reg = <0x00000000 0x00020000>;
+  };
+
+  slot0_ns_partition: partition@20000 {
+    compatible = "zephyr,mapped-partition";
+    label = "image-0-nonsecure";
+    reg = <0x00020000 0x00050000>;
+  };
+};
