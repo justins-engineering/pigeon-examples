@@ -529,20 +529,41 @@ gitignored-`prj.local.conf` pattern -- never committed, never printed.
 
 **Not yet flashed to the physical board.** The task's premise was a Circuit
 Dojo nRF9151 Feather reachable over `probe-rs` via an onboard RP2040
-CMSIS-DAP debug probe. As of this writing, `probe-rs list` only sees the
-J-Link (the existing nRF9160 board) and the ESP32-C6's JTAG/serial --
-no CMSIS-DAP device enumerates, and there's no `/dev/ttyACM3`. What *is*
-newly attached is a bare CP2102N USB-serial adapter, which looks like just
-a console UART, not the debug probe's own USB interface -- possibly the
-board's debug-probe cable isn't connected yet, or needs a second USB port.
-Once the probe is reachable, flashing/monitoring should follow the same
-pattern as `https_init`'s (see "Flashing `https_init` to real hardware"
-above), swapped to `probe-rs run --chip nRF9151_xxAA` instead of
-`nrfutil`/J-Link, and the expected boot sequence is the same shape (LTE
-attach, then either real GNSS status lines or, in sim mode, the
-"SIMULATED GPS mode enabled" warning followed by a moving `gps_lat`/
-`gps_lon` telemetry stream every `CONFIG_ASSET_TRACKER_GNSS_FIX_INTERVAL_SEC`/
-shadow poll).
+CMSIS-DAP debug probe (console at `/dev/ttyACM3`, same USB device as the
+probe -- `2e8a:000c` per `samples/boards/circuitdojo/feather_nrf9151/README.md`).
+As of this writing, `probe-rs list`/`lsusb` see only the J-Link (the
+existing nRF9160 board -- hands off, another agent owns it) and the
+ESP32-C6's JTAG/serial (also hands off); no `2e8a:xxxx` device enumerates
+at all, and there's no `/dev/ttyACM3`. A bare, silent CP2102N USB-serial
+adapter did show up on `/dev/ttyUSB0` mid-task, but that's the nRF9160
+board's own console (confirmed with the team lead), not this board's --
+most likely explanation is a bench cable got moved/unplugged while
+swapping boards. Not a code problem; just needs the physical debug-probe
+cable reconnected.
+
+**The exact follow-up once the probe returns** (should be a ~10 minute
+check, not a rediscovery):
+
+```sh
+cd ~/asset_tracker_ncs && source .venv/bin/activate
+probe-rs list                                    # confirm the CMSIS-DAP probe shows up
+west flash -d build --runner probe-rs            # real-GNSS config (or -d build_sim for CONFIG_ASSET_TRACKER_SIM_GPS)
+pyserial-miniterm -f colorize /dev/ttyACM3 115200
+```
+
+(`board.cmake` already bakes in `board_runner_args(probe-rs "--chip=nRF9151_xxAA")`
+for this board -- no extra flags needed beyond `--runner probe-rs`.) Watch
+for: `*** Booting Pigeon Asset Tracker ***` boot banner, `connection_manager`
+LTE attach lines (same shape as `https_init`'s, see "Flashing `https_init`
+to real hardware" above), then either `gnss: GNSS started: periodic fixes
+every 120 s` + `shadow: No GNSS fix yet (N satellites tracked); position not
+reported` each poll (real-GNSS config, expected indoors -- a real fix is not
+expected here at all), or `gnss: SIMULATED GPS mode enabled -- reporting a
+fabricated 50m circuit around ...` followed by `shadow: Position (SIMULATED):
+...` every poll (`CONFIG_ASSET_TRACKER_SIM_GPS=y` build) -- either way,
+confirm the corresponding `gps_*` keys actually land in
+`GET /pigeons/:id/telemetry/latest` against the real staging backend, which
+is the one thing a build-only check can't confirm.
 
 **Known, honest gap**: no real outdoor GNSS fix has been (or is expected to
 be) exercised -- this board hasn't left a desk. `CONFIG_ASSET_TRACKER_SIM_GPS`

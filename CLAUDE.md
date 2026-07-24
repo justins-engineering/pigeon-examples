@@ -230,12 +230,15 @@ work around or skip it when scripting flashes/tests.
   real device credentials baked in). Also turns on `CONFIG_PIGEON_REBOOT_ON_FATAL`/
   `CONFIG_PIGEON_WATCHDOG` (task #45) — a field asset tracker is the poster child for needing
   unattended wedge recovery. Build-verified only as of this writing (both the real-GNSS and
-  `CONFIG_ASSET_TRACKER_SIM_GPS` configs, `west build` exit 0) — the physical nRF9151 Feather this
-  was written for wasn't reachable via its expected `probe-rs`/CMSIS-DAP path when this sample was
-  built (only a bare console UART enumerated, no debug-probe USB interface); see this repo's README
-  "GNSS asset tracker" section for the full state and what's still needed before real-hardware
-  verification (indoor GNSS status + `CONFIG_ASSET_TRACKER_SIM_GPS` telemetry reaching the real
-  backend) can happen. A real outdoor GNSS fix was never in scope for this sample's verification.
+  `CONFIG_ASSET_TRACKER_SIM_GPS` configs, `west build` exit 0, in an isolated scratch workspace —
+  see "Two-manifest gotcha" above) — the physical nRF9151 Feather's RP2040 CMSIS-DAP debug probe
+  wasn't enumerating (`probe-rs list`/`lsusb` showed neither the probe nor its `2e8a:xxxx` VID) when
+  this sample was built, most likely a bench cable moved/unplugged during an unrelated board swap
+  (the nRF9160's console did show up mid-task, confirmed as that board's, not this one's — not
+  something to fix from this repo). See this repo's README "GNSS asset tracker" section for the
+  full state and the exact `probe-rs`/`west flash`/console-watch follow-up to run once the probe is
+  reconnected — should be a ~10 minute check, not a rediscovery. A real outdoor GNSS fix was never
+  in scope for this sample's verification.
 - **`wifi_init` / `ws_init`** (added 2026-07-19, task #27; `CONFIG_PIGEON_WS` landed and
   hardware-verified 2026-07-20, task #33; split into two samples 2026-07-21, task #37) —
   ESP32-C6-DevKitC-1 board bring-up. Originally one sample (`wifi_init`) that grew `CONFIG_PIGEON_WS`
