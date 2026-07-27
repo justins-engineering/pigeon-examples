@@ -36,5 +36,17 @@ endforeach()
 target_sources(app PRIVATE
   src/main.c
   src/shadow.c
-  src/net/wifi_connection_manager.c
 )
+
+# native_sim has no ESP32 WiFi radio to join a network with -- swap in a
+# generic conn_mgr-over-NSOS connection manager instead (see
+# src/net/native_sim_connection_manager.c's own header comment). Both files
+# export the same wifi_connect()/wifi_disconnect() names, so main.c/shadow.c
+# need no board-specific code of their own. CONFIG_BOARD_NATIVE_SIM is a
+# real CMake variable here, not just a Kconfig symbol: find_package(Zephyr)
+# above has already run Kconfig for the board passed to `west build -b`.
+if(CONFIG_BOARD_NATIVE_SIM)
+  target_sources(app PRIVATE src/net/native_sim_connection_manager.c)
+else()
+  target_sources(app PRIVATE src/net/wifi_connection_manager.c)
+endif()
