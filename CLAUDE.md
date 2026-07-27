@@ -355,6 +355,82 @@ to control), so the symbol doesn't exist to link against. This was caught by act
 just reading Kconfig), since the failure is a linker error, not a compile error — Kconfig alone won't
 show it. If you add another sample with LTE bring-up, carry this guard over too.
 
+### native_sim variants for every non-GNSS sample (task #54, 2026-07-27)
+
+Prior state: `shadow_model` built and ran but was a silent no-op (task #53, fixed in `~/pigeon`
+`pigeon_init()` — the endpoint/token guard fired even when no connector was ever selected);
+`coap_tcp_init` built but was never run-verified; `wifi_init`/`ws_init` failed to *link* on
+`native_sim` (`net_mgmt_NET_REQUEST_WIFI_CONNECT_STORED` undefined — no WiFi L2 there); `https_init`
+didn't build at all for `native_sim` (MCUboot/nrfxlib). All five now have a working `native_sim`
+variant, run-verified against a real backend (staging for `coap_tcp_init`/`wifi_init`/`ws_init`/
+`https_init`'s new provisioning, matching this workspace's normal `prj.local.conf` convention —
+never the *existing* hardware `prj.local.conf` files, see the incident note below).
+
+This environment has no passwordless `sudo`, ruling out the classic TAP/`zeth` native networking path
+(`net-tools/net-setup.sh` needs root plus NAT to reach anything off-host). Every fix below instead
+uses **NSOS** (`CONFIG_NET_NATIVE_OFFLOADED_SOCKETS`, "Native Simulator offloaded sockets") — calls
+straight into the host's own BSD socket API, so DNS/routing/connect just work with zero host setup,
+matching upstream Zephyr's own `samples/net/sockets/http_get/overlay-nsos.conf` pattern. Two fixes
+needed by every sample that uses it:
+
+- **conn_mgr never reaches `NET_EVENT_L4_CONNECTED`** unless the interface also carries an IP
+  address — NSOS's `CONNECTIVITY_SIM` interface has no L2 and never runs DHCP. Confirmed against
+  Zephyr's own `tests/net/conn_mgr_nsos`, which assigns a dummy address for exactly this reason
+  before triggering its own connect. Each connection manager now does the same (`192.0.2.1`, never
+  used for real routing — NSOS bypasses Zephyr's IP stack entirely).
+- **`wifi_init`/`ws_init`** needed a whole second connection-manager source file
+  (`src/net/native_sim_connection_manager.c`, board-conditionally selected in `CMakeLists.txt`
+  instead of `wifi_connection_manager.c`) rather than an in-place guard, since there's no WiFi
+  interface to fall back to at all — it's the same generic `conn_mgr_all_if_up()`/`_connect()`
+  pattern `https_init`/`coap_tcp_init`'s `connection_manager.c` already used for LTE. Every TLS/PSA
+  fix `wifi_init`'s real-ESP32-C6 bring-up already found (SNI, mbedTLS heap wiring, ECDHE key
+  generation, TLS1.2 PRF, ...) carried over unchanged, since none of it was WiFi-specific.
+
+**`coap_tcp_init`**: builds, runs, completes native_sim/NSOS network bring-up, resolves DNS, and
+attempts the real TLS/TCP connect — which cleanly times out (`-116`/`ETIMEDOUT`, ~136s of device
+uptime) rather than completing a handshake. This is expected, not a bug: dovecote only stores the
+`coaps+tcp://` endpoint string as pigeon metadata (`build_coap_endpoint`) and has no actual CoAP
+protocol listener anywhere in the Worker. A device-side Kconfig change can't route around a backend
+that was never listening.
+
+**`https_init`**: needed sysbuild's MCUboot image turned off at the command line
+(`-DSB_CONFIG_BOOTLOADER_NONE=y` — MCUboot's crypto build asserts targeting the native/POSIX SoC,
+`nrfxlib/common.cmake` has never heard of it), plus every FOTA/MCUmgr/ARM-only Kconfig symbol that's
+normally fine in `prj.conf` moved out into `boards/circuitdojo_feather_nrf9160_ns.conf` — this
+workspace's build treats an assigned-but-dependency-unsatisfied symbol as a **fatal** Kconfig warning
+(task #8), not a silent no-op, so leaving e.g. `CONFIG_PIGEON_FOTA_CURRENT_VERSION` or
+`CONFIG_FAULT_DUMP` (ARM-only) generically assigned broke the native_sim configure step outright.
+Real hardware's TLS is offloaded to the nRF91 modem, so `boards/native_sim_native_64.conf` also
+carries the full software mbedTLS/PSA stack `wifi_init` already proved out, plus its own
+`CONFIG_PSA_WANT_KEY_TYPE_RSA_KEY_PAIR_IMPORT` (this sample's CA bundle is Google's full 2-cert
+bundle including the legacy RSA cross-sign, unlike `wifi_init`'s trimmed one) and a
+`CONFIG_NET_SOCKETS_TLS_MAX_CONTEXTS`/`CONFIG_MBEDTLS_HEAP_SIZE` bump (the default single TLS
+context/64KiB heap intermittently failed once `CONFIG_PIGEON_LOG_UPLOAD`'s own TLS socket contended
+with the shadow-fetch one). Verified against a real staging pigeon: shadow GET succeeds, telemetry
+POST lands (`GET /pigeons/:id/telemetry` confirms it), reproduced across multiple runs. See README's
+"Building a sample" section for the exact command.
+
+**Incident, logged for the record**: mid-task, a `ws_init` native_sim run was built with that
+sample's *existing* `prj.local.conf` — which turned out to be a real production pigeon
+(`ws-prod-check-c6`) actively reporting from live ESP32-C6 hardware (climbing `uptime_s` every ~70s
+right up to the run). Since dovecote enforces one WS socket per pigeon (rival connection steals the
+slot), this likely knocked the real device off its socket. Flagged to the team lead immediately; that
+file was never modified, and every subsequent native_sim run (including `wifi_init`/`https_init`'s
+existing hardware `prj.local.conf` files) used a **freshly-provisioned staging-only pigeon** passed
+via `-DEXTRA_CONF_FILE=<scratch-path>` instead, deliberately not the sample's own gitignored file.
+**Lesson for next time**: a sample's existing `prj.local.conf` may belong to live hardware — always
+provision a dedicated pigeon for a fresh transport/network variant rather than assuming an existing
+local conf is safe to reuse, even (especially) when it "just works."
+
+**Scratch-workspace gotcha, worth repeating beyond the "Two-manifest gotcha" note above**: `cp -al`
+hardlink-copying `samples/` into a scratch topdir (not just the vendored trees) means an edit to the
+*live* repo silently stops appearing in the scratch copy the moment it's saved — Edit/Write tools do
+a replace-and-rename, which breaks that one file's hardlink while every untouched file stays in sync.
+Symptom: a board conf edit that CMake's own `CONF_FILE` cache variable correctly lists, yet the
+resulting `.config` never reflects. Fix: `rm -rf` and re-`cp -al` `samples/` fresh before every build
+that follows a real-repo edit — cheap and instant, and confirmed to actually resolve it (diff the
+scratch copy against the live file first if in doubt).
+
 ## Build instructions
 
 ```sh

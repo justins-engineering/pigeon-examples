@@ -137,16 +137,37 @@ west build -d build samples/shadow_model -b native_sim/native/64
 `wifi_init`/`ws_init` build for real ESP32-C6-DevKitC-1 hardware -- see
 "ESP32-C6-DevKitC-1 port" below for board target/provisioning details.
 
-`https_init` boots under MCUboot via sysbuild (see `sysbuild.conf`), and
-MCUboot doesn't support the native/`native_sim` SoC — so unlike
-`coap_tcp_init`, it only builds for real hardware. Both nRF91 samples need a
-topdir configured against `west.yml`, not the default `west-vanilla.yml` --
-see "Setup" above:
+`https_init` boots under MCUboot via sysbuild (see `sysbuild.conf`) on real
+hardware. Both nRF91 samples need a topdir configured against `west.yml`,
+not the default `west-vanilla.yml` -- see "Setup" above:
 
 ```sh
 source .venv/bin/activate
 west build -d build samples/https_init -b circuitdojo_feather/nrf9160/ns
 ```
+
+`https_init` also builds and runs for `native_sim` (task #54), with
+sysbuild's MCUboot image disabled at the command line -- MCUboot's crypto
+build hard-asserts trying to target the native/POSIX SoC (`nrfxlib`'s
+`common.cmake` has never heard of it), and FOTA is meaningless without a
+bootloader/second slot anyway (`boards/native_sim_native_64.conf` drops
+`CONFIG_PIGEON_FOTA`/MCUmgr accordingly -- native_sim is for exercising the
+platform protocol, not OTA):
+
+```sh
+source .venv/bin/activate
+west build -d build samples/https_init -b native_sim/native/64 -- -DSB_CONFIG_BOOTLOADER_NONE=y
+./build/https_init/zephyr/zephyr.exe
+```
+
+(Note the binary lands under `build/https_init/zephyr/zephyr.exe` here, not
+plain `build/zephyr/zephyr.exe` like `shadow_model` -- sysbuild always
+nests the app image's own build tree under its image name, even with the
+bootloader child image turned off.) Real hardware's TLS is offloaded to the
+nRF91 modem, so `boards/native_sim_native_64.conf` also carries the full
+software mbedTLS/PSA stack this sample never needed before -- see that
+file's comments, and `wifi_init`'s prj.conf for where those exact fixes
+were first found and verified against this same backend.
 
 `coap_tcp_init` also builds for that same board target (no sysbuild/MCUboot
 involved, so it isn't subject to the `native_sim` restriction above; its LTE
