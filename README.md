@@ -562,48 +562,81 @@ Real device secrets (`CONFIG_PIGEON_ENDPOINT`/`CONFIG_PIGEON_TOKEN`) came
 from an already-provisioned staging pigeon, following this repo's usual
 gitignored-`prj.local.conf` pattern -- never committed, never printed.
 
-**Not yet flashed to the physical board.** The task's premise was a Circuit
-Dojo nRF9151 Feather reachable over `probe-rs` via an onboard RP2040
-CMSIS-DAP debug probe (console at `/dev/ttyACM3`, same USB device as the
-probe -- `2e8a:000c` per `samples/boards/circuitdojo/feather_nrf9151/README.md`).
-As of this writing, `probe-rs list`/`lsusb` see only the J-Link (the
-existing nRF9160 board -- hands off, another agent owns it) and the
-ESP32-C6's JTAG/serial (also hands off); no `2e8a:xxxx` device enumerates
-at all, and there's no `/dev/ttyACM3`. A bare, silent CP2102N USB-serial
-adapter did show up on `/dev/ttyUSB0` mid-task, but that's the nRF9160
-board's own console (confirmed with the team lead), not this board's --
-most likely explanation is a bench cable got moved/unplugged while
-swapping boards. Not a code problem; just needs the physical debug-probe
-cable reconnected.
+**Verified indoors on a real Circuit Dojo nRF9160 Feather with a real GPS
+antenna attached** (task's premise pivoted from the 9151 to the 9160 mid-task
+-- the antenna was physically on the 9160, and its CMSIS-DAP debug probe
+was reachable via the existing J-Link, so hardware verification landed on
+`circuitdojo_feather/nrf9160/ns` rather than the 9151 target). Booted once
+(`build_9160_task52`, matching commits a9fa7fd + f0b22d3 below), left
+running unattended and cycling for well over an hour: LTE attach, GNSS
+activation, and `shadow_sync()` all completed successfully every poll, no
+crashes, no reboots.
 
-**The exact follow-up once the probe returns** (should be a ~10 minute
-check, not a rediscovery):
+**GNSS result: a real fix was acquired indoors** -- not just nonzero
+satellites, an actual `gps_fix_quality=1` fix, repeatedly, alternating with
+stretches of `gps_fix_quality=0`/`gps_sats=0` as geometry/signal came and
+went (normal for an indoor GNSS antenna near windows). Across the
+observation window: 0 sats 65 times, 4 sats 64 times, 5 sats 91 times, 6
+sats (the observed max) 19 times. Sample RTT log lines (timestamps are
+device uptime, `HH:MM:SS`, not wall clock):
 
-```sh
-cd ~/asset_tracker_ncs && source .venv/bin/activate
-probe-rs list                                    # confirm the CMSIS-DAP probe shows up
-west flash -d build --runner probe-rs            # real-GNSS config (or -d build_sim for CONFIG_ASSET_TRACKER_SIM_GPS)
-pyserial-miniterm -f colorize /dev/ttyACM3 115200
 ```
+[00:14:53.114] <inf> shadow: Position (fix): <lat>,<lon> alt=-3.9m speed=0.05m/s heading=0.0deg sats=4
+[00:33:47.908] <inf> shadow: Position (fix): <lat>,<lon> alt=168.4m speed=0.09m/s heading=230.5deg sats=5
+[00:46:16.441] <inf> shadow: No GNSS fix yet (0 satellites tracked); position not reported
+```
+(coordinates in the real capture are the device's actual rough vicinity --
+redacted here; altitude readings above are wildly noisy, -187m to +198m
+across different fixes, which is expected indoor GNSS multipath/reduced-
+accuracy behavior, not a bug -- lat/lon stayed self-consistent to within
+about 10m of the same spot the whole time). Confirmed independently via the
+backend (`GET /pigeons/:id/telemetry` and `/telemetry/history`): `gps_lat`/
+`gps_lon`/`gps_alt_m`/`gps_speed_mps`/`gps_heading_deg` all landed
+correctly whenever a fix was active, `gps_sats`/`gps_fix_quality` landed
+every poll regardless.
 
-(`board.cmake` already bakes in `board_runner_args(probe-rs "--chip=nRF9151_xxAA")`
-for this board -- no extra flags needed beyond `--runner probe-rs`.) Watch
-for: `*** Booting Pigeon Asset Tracker ***` boot banner, `connection_manager`
-LTE attach lines (same shape as `https_init`'s, see "Flashing `https_init`
-to real hardware" above), then either `gnss: GNSS started: periodic fixes
-every 120 s` + `shadow: No GNSS fix yet (N satellites tracked); position not
-reported` each poll (real-GNSS config, expected indoors -- a real fix is not
-expected here at all), or `gnss: SIMULATED GPS mode enabled -- reporting a
-fabricated 50m circuit around ...` followed by `shadow: Position (SIMULATED):
-...` every poll (`CONFIG_ASSET_TRACKER_SIM_GPS=y` build) -- either way,
-confirm the corresponding `gps_*` keys actually land in
-`GET /pigeons/:id/telemetry` (dashboard-auth'd, latest-value-per-key) and
-`GET /pigeons/:id/telemetry/history` against the real staging backend,
-which is the one thing a build-only check can't confirm.
+**Known, honest gap**: no *outdoor* GNSS fix has been separately exercised
+-- given an indoor fix already worked this well, an outdoor one is
+expected to be strictly easier/more stable, but that's still an
+assumption, not a measurement. `CONFIG_ASSET_TRACKER_SIM_GPS` remains
+available for demoing the pipeline without any sky view at all (CI, a
+desk, no antenna).
 
-**Known, honest gap**: no real outdoor GNSS fix has been (or is expected to
-be) exercised -- this board hasn't left a desk. `CONFIG_ASSET_TRACKER_SIM_GPS`
-exists specifically so the rest of the pipeline doesn't have to wait on that.
+#### Debug-tooling lesson learned the hard way (2026-07-27)
+
+**Never rapid-cycle `nrfjprog`/debug-probe connections against a live
+cellular target.** Polling RTT via repeated one-shot `nrfjprog --memrd`
+invocations (a fresh J-Link USB connect/read/disconnect every few seconds,
+indefinitely) produced real, reproducible symptoms that looked exactly like
+firmware bugs but weren't: phantom "stuck at the same log line forever"
+reads that turned out to be a `SEGGER_RTT_MODE_NO_BLOCK_TRIM` buffer
+starved because nothing was advancing `RdOff`; corrupted register dumps
+(every register reading back `0xDEADBEEF`, a J-Link "couldn't read" sentinel,
+not real target state) from a `JLinkGDBServer` session fighting the same
+probe for the same nrfjprog poller; and -- the expensive one -- a real
+device that only ever completed exactly one `shadow_sync()`/telemetry cycle
+per boot before going silent, self-fixed the moment the aggressive polling
+stopped, strongly (though not conclusively -- an A/B repro wasn't run,
+since that would have cost more resets than it was worth) suggesting the
+repeated connect/disconnect cycles were disturbing the live modem's own AT
+command timing, not a code bug at all. Several hours of this session went
+into diagnosing what turned out to be self-inflicted debug-tooling
+interference.
+
+**What works instead**: start exactly one `JLinkGDBServer` session
+(`-noreset`) right after the one deliberate flash, and leave it running for
+the whole observation window. Every subsequent peek is a fresh `gdb` CLIENT
+connecting to that *same already-running server* over TCP (`target
+extended-remote localhost:2331`) -- this reuses the existing SWD connection
+rather than re-touching the physical probe, so it doesn't repeat whatever
+disturbance a fresh connect causes. Advance RTT's `RdOff` from within that
+same session (`set variable _SEGGER_RTT.aUp[0].RdOff = ...WrOff`) so the
+target's own writes don't stall out; resume with `monitor go` (not GDB's
+`continue`, which blocks the script until the target *stops* again -- not
+useful here) before detaching. This is what `gdb_rtt_poll.sh`-style scripts
+in this task's own working notes did once the lesson landed, and it's the
+pattern to reach for first on any future real-hardware debug session against
+a live cellular device on this bench.
 
 ## ESP32-C6-DevKitC-1 port
 

@@ -223,22 +223,36 @@ work around or skip it when scripting flashes/tests.
   synthetic circular track (always reporting `gps_fix_quality=2`, never `1`, so it can never be
   mistaken for a real fix) for indoor/CI demos where GNSS will very likely never converge — the
   circular-track math was independently verified via a standalone haversine-distance check before
-  being built into firmware. No sysbuild/MCUboot (no FOTA in this sample), but still needed
-  `boards/circuitdojo_feather_nrf9151_ns.overlay` to rebalance slot0 to 128 KB secure/320 KB
-  nonsecure (same mechanism `https_init`'s overlay uses, for a different reason — this sample's own
-  footprint, not a second MCUboot slot; the stock 192 KB nonsecure split overflowed by ~5KB with
-  real device credentials baked in). Also turns on `CONFIG_PIGEON_REBOOT_ON_FATAL`/
-  `CONFIG_PIGEON_WATCHDOG` (task #45) — a field asset tracker is the poster child for needing
-  unattended wedge recovery. Build-verified only as of this writing (both the real-GNSS and
-  `CONFIG_ASSET_TRACKER_SIM_GPS` configs, `west build` exit 0, in an isolated scratch workspace —
-  see "Two-manifest gotcha" above) — the physical nRF9151 Feather's RP2040 CMSIS-DAP debug probe
-  wasn't enumerating (`probe-rs list`/`lsusb` showed neither the probe nor its `2e8a:xxxx` VID) when
-  this sample was built, most likely a bench cable moved/unplugged during an unrelated board swap
-  (the nRF9160's console did show up mid-task, confirmed as that board's, not this one's — not
-  something to fix from this repo). See this repo's README "GNSS asset tracker" section for the
-  full state and the exact `probe-rs`/`west flash`/console-watch follow-up to run once the probe is
-  reconnected — should be a ~10 minute check, not a rediscovery. A real outdoor GNSS fix was never
-  in scope for this sample's verification.
+  being built into firmware. Builds for both `circuitdojo_feather_nrf9151/nrf9151/ns` and (added
+  2026-07-27, task-driven pivot once it turned out the GPS antenna was physically on the 9160)
+  `circuitdojo_feather/nrf9160/ns` — both via sysbuild/MCUboot (added the same day: a plain
+  non-sysbuild `CONFIG_BUILD_WITH_TFM=y` build hard-faulted immediately on real nRF9160 silicon, PC
+  locked at `0xEFFFFFFE`, confirmed via a real J-Link register read — this board's TF-M needs
+  sysbuild orchestrating it, same as `https_init`/`embedded-departure-board` on the same hardware).
+  Also needed `CONFIG_MODEM_ANTENNA_AT_COEX0` (Nordic's `modem_antenna` library only defaults this
+  GNSS LNA-gating AT command on for Nordic's own DK/Thingy91 boards, not Circuit Dojo's — added the
+  value Circuit Dojo's own reference GPS sample uses) and an explicit
+  `lte_lc_func_mode_set(LTE_LC_FUNC_MODE_ACTIVATE_GNSS)` in `gnss.c` (`CONFIG_LTE_NETWORK_MODE_LTE_M_GPS`
+  only sets modem *system* mode, not functional mode — every `nrf_modem_gnss_*` call failed
+  `-NRF_EACCES` without it). Task #52 (same day): `main.c` wraps the initial `lte_connect()` in a
+  bounded retry-with-backoff, `sys_reboot()`-ing after all rounds fail, since a boot that hits the
+  nRF91 modem's 30-minute reset-loop restriction (see "Modem reset safety" below) used to just
+  return and sit fully idle forever with no recovery path — a real, repeatedly-observed failure mode
+  during this same bring-up session. Both boards' overlays rebalance slot0 to 128 KB secure/320 KB
+  nonsecure (same mechanism `https_init`'s overlay uses, different reason — this sample's own
+  footprint). Also turns on `CONFIG_PIGEON_REBOOT_ON_FATAL`/`CONFIG_PIGEON_WATCHDOG` (task #45) — a
+  field asset tracker is the poster child for needing unattended wedge recovery.
+
+  **Hardware-verified 2026-07-27** on a real Circuit Dojo nRF9160 Feather with a real GPS antenna
+  attached, indoors: booted once, left running unattended for over an hour, LTE/GNSS/telemetry all
+  cycling cleanly the whole time — and GNSS acquired an actual indoor fix repeatedly (`gps_fix_quality=1`,
+  up to 6 satellites tracked, alternating with `gps_sats=0` stretches as signal came and went, all
+  confirmed both via live RTT and the real staging backend). A real *outdoor* fix was not separately
+  exercised (expected to be easier, not yet measured). Chasing this down cost several hours to an
+  entirely self-inflicted debug-tooling problem — see the README "GNSS asset tracker" section's
+  "Debug-tooling lesson learned the hard way" subsection before doing further real-hardware debugging
+  on this or any other cellular sample: rapid-cycling `nrfjprog`/probe connections against a live
+  target produces phantom stalls and corrupted reads that look exactly like firmware bugs.
 - **`wifi_init` / `ws_init`** (added 2026-07-19, task #27; `CONFIG_PIGEON_WS` landed and
   hardware-verified 2026-07-20, task #33; split into two samples 2026-07-21, task #37) —
   ESP32-C6-DevKitC-1 board bring-up. Originally one sample (`wifi_init`) that grew `CONFIG_PIGEON_WS`
