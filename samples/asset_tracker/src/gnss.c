@@ -12,6 +12,7 @@ LOG_MODULE_REGISTER(gnss, CONFIG_ASSET_TRACKER_LOG_LEVEL);
 /* Real GNSS: the nRF91's built-in GNSS receiver, via nrf_modem's GNSS API. */
 
 #include <math.h>
+#include <modem/lte_lc.h>
 #include <nrf_modem_gnss.h>
 
 /* GNSS needs GPS in the modem's own system mode bitmask to interleave
@@ -57,7 +58,30 @@ static void gnss_event_handler(int event) {
 int tracker_gnss_init(void) {
   k_mutex_init(&pvt_lock);
 
-  int err = nrf_modem_gnss_event_handler_set(gnss_event_handler);
+  /* CONFIG_LTE_NETWORK_MODE_LTE_M_GPS only puts GPS in the modem's *system*
+   * mode (which RATs/GNSS it's allowed to use) -- it does not, by itself,
+   * turn GNSS on. connection_manager.c's lte_connect() activates LTE via
+   * conn_mgr/NRF_MODEM_LIB_NET_IF, which -- confirmed on real hardware, see
+   * this sample's README -- issues CFUN=21 (LTE_LC_FUNC_MODE_ACTIVATE_LTE,
+   * "Activates LTE without changing GNSS"), not CFUN=1
+   * (LTE_LC_FUNC_MODE_NORMAL, whose doc comment says "Both LTE and GNSS
+   * will become active if the respective system modes are enabled").
+   * Without this explicit activation, every nrf_modem_gnss_* call below
+   * fails with -NRF_EACCES ("GNSS is not enabled in system or functional
+   * mode") even with system mode configured correctly. CFUN=31
+   * (LTE_LC_FUNC_MODE_ACTIVATE_GNSS) is documented as "Activates GNSS
+   * without changing LTE" -- additive, doesn't touch the LTE connection
+   * lte_connect() just established. Same call nRF's own "Cellular: GNSS"
+   * sample makes (gnss_init_and_start(), CONFIG_GNSS_SAMPLE_ASSISTANCE_NONE
+   * branch) before its own nrf_modem_gnss_* setup. */
+  int err = lte_lc_func_mode_set(LTE_LC_FUNC_MODE_ACTIVATE_GNSS);
+
+  if (err) {
+    LOG_ERR("Failed to activate GNSS functional mode: %d", err);
+    return err;
+  }
+
+  err = nrf_modem_gnss_event_handler_set(gnss_event_handler);
 
   if (err) {
     LOG_ERR("Failed to set GNSS event handler: %d", err);

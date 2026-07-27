@@ -79,6 +79,50 @@ config ASSET_TRACKER_GNSS_FIX_RETRY_SEC
 
 endif # !ASSET_TRACKER_SIM_GPS
 
+config ASSET_TRACKER_LTE_CONNECT_MAX_ROUNDS
+  int "Bounded lte_connect() retry rounds before a self-reboot"
+  default 5
+  help
+    task #52: a real-hardware finding during bring-up -- a boot that hits
+    the nRF91 modem's 30-minute reset-loop restriction (see this repo's
+    CLAUDE.md "Modem reset safety") makes lte_connect() fail/time out
+    exactly once, and this sample's main() used to just return on that
+    single failure, leaving the device fully idle (no LTE, no telemetry,
+    no recovery) for however long was left of the restriction -- observed
+    live as multi-minute-to-multi-hour silent gaps with no watchdog able
+    to help (CONFIG_PIGEON_WATCHDOG only feeds on a successful telemetry
+    report, which never happens if LTE never comes up at all). main()
+    now retries lte_connect() up to this many rounds, with backoff
+    between rounds (see ASSET_TRACKER_LTE_CONNECT_BACKOFF_*_SEC below),
+    before giving up and self-rebooting -- a fresh boot is often enough
+    to get past a transient failure (coverage gap, a restriction that
+    expires mid-wait), and repeated bounded reboots are still strictly
+    better than a device that silently gives up forever the first time
+    LTE doesn't come up.
+
+config ASSET_TRACKER_LTE_CONNECT_BACKOFF_BASE_SEC
+  int "Backoff base between lte_connect() retry rounds (seconds)"
+  default 30
+  help
+    Doubles each round (same pattern pigeon's own CONFIG_PIGEON_WS
+    reconnect backoff uses), capped at
+    ASSET_TRACKER_LTE_CONNECT_BACKOFF_MAX_SEC. Deliberately not zero/tiny
+    -- a failed attempt is often failing for a reason that won't resolve
+    in seconds (no coverage, a modem restriction with tens of minutes
+    left), so retrying instantly would just burn power and add log noise
+    without improving the odds.
+
+config ASSET_TRACKER_LTE_CONNECT_BACKOFF_MAX_SEC
+  int "Backoff ceiling between lte_connect() retry rounds (seconds)"
+  default 300
+  help
+    5 minutes -- comfortably short enough that
+    ASSET_TRACKER_LTE_CONNECT_MAX_ROUNDS rounds of backoff (worst case,
+    with the default 5 rounds/30s base: 30+60+120+240+300 = 750s, about
+    12.5 minutes) still self-reboots well before an operator would
+    reasonably start wondering if the device fell off the network for
+    good.
+
 module = ASSET_TRACKER
 module-str = Asset tracker sample
 source "$(ZEPHYR_BASE)/subsys/logging/Kconfig.template.log_config"

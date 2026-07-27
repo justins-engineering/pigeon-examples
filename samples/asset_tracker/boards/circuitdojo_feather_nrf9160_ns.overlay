@@ -1,0 +1,26 @@
+/* Rebalances slot0's stock secure/nonsecure split (256 KB secure / 192 KB
+ * nonsecure) to 128 KB secure / 320 KB nonsecure -- same mechanism and same
+ * split as https_init's board overlay of the same name (and this sample's
+ * own nrf9151 overlay), for the same reason: the stock 192 KB nonsecure
+ * split isn't enough for HTTPS+TLS+cellular+GNSS with reasonable logging.
+ * No modem-trace UART1 pinctrl here (unlike https_init's 9160 overlay) --
+ * this sample doesn't enable CONFIG_NRF_MODEM_LIB_TRACE, and console/log
+ * output goes over RTT instead of UART0 (see boards/circuitdojo_feather_nrf9160_ns.conf),
+ * so there's nothing UART-pin-specific this sample needs to override.
+ */
+/delete-node/ &slot0_s_partition;
+/delete-node/ &slot0_ns_partition;
+
+&slot0_partition {
+  slot0_s_partition: partition@0 {
+    compatible = "zephyr,mapped-partition";
+    label = "image-0-secure";
+    reg = <0x00000000 0x00020000>;
+  };
+
+  slot0_ns_partition: partition@20000 {
+    compatible = "zephyr,mapped-partition";
+    label = "image-0-nonsecure";
+    reg = <0x00020000 0x00050000>;
+  };
+};

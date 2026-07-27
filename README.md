@@ -457,6 +457,22 @@ tuned one. GNSS itself runs in periodic (not continuous) navigation mode
 minutes ago," not a continuous high-rate track, and periodic mode leaves
 LTE more of the shared radio between fixes.
 
+**GNSS antenna/LNA coexistence config, found on real hardware.** With a
+real GPS antenna attached, `gps_sats` still read 0 indefinitely. Root
+cause: Nordic's own `modem_antenna` library (`nrf/lib/modem_antenna/Kconfig`)
+only defaults its LNA-gating AT command (`AT%XCOEX0`) on for Nordic's own
+DK/Thingy91 boards -- a non-Nordic board gets no coexistence config at all
+unless the app opts in explicitly. Circuit Dojo's own reference GPS sample
+(`circuitdojo/nrf9160-feather-examples-and-drivers`, `samples/gps` board
+confs) sets `CONFIG_MODEM_ANTENNA=y` /
+`CONFIG_MODEM_ANTENNA_AT_COEX0="AT\%XCOEX0=1,1,1565,1586"` across the
+9160/9151/9161 Feather family -- the same value as Nordic's own onboard-
+antenna default, just needing the explicit opt-in for a board Nordic's
+library doesn't know about. Added to both boards'
+`circuitdojo_feather_nrf916{0,1}_ns.conf`. No `XMAGPIO` needed -- Circuit
+Dojo's own sample doesn't set one for this board family either, implying
+the antenna path here isn't MAGPIO-switched.
+
 **Telemetry key set** (`src/shadow.c`'s `report_position()`, all numeric so
 they're graphable in `fancier`'s telemetry-history graphs): `gps_lat`,
 `gps_lon`, `gps_alt_m`, `gps_speed_mps`, `gps_heading_deg`, `gps_sats`,
@@ -488,18 +504,37 @@ meters from the base coordinate via the haversine formula, and speed/heading
 match the expected constant-angular-velocity values) before ever building it
 into firmware.
 
-**No MCUboot/sysbuild.** Unlike `https_init`, this sample doesn't do FOTA,
-so it's a single plain image rather than a dual-slot MCUboot build --
-simpler is fine when there's no second image competing for flash. It still
-needed `boards/circuitdojo_feather_nrf9151_ns.overlay`, though: the stock
-192 KB nonsecure flash split isn't enough for HTTPS+TLS+cellular+GNSS with
-any reasonable logging (confirmed by an actual failing link, "region FLASH
-overflowed," before adding the overlay -- not assumed up front). The
-overlay rebalances slot0 to 128 KB secure / 320 KB nonsecure, the same
-split and the same delete-then-redefine mechanism `https_init`'s overlay
-uses, for a different reason (this sample's own footprint, not a second
-MCUboot slot) -- `slot1` is left untouched at its stock size, since unlike
-`https_init` this sample never touches it at all.
+**MCUboot/sysbuild, added after a real-hardware finding.** This sample
+doesn't do FOTA, so it was originally written as a single plain
+(non-sysbuild) image -- simpler seemed fine with no second image competing
+for flash. A real nRF9160 Feather disagreed: a plain `west build` with
+`CONFIG_BUILD_WITH_TFM=y` built and linked without a single warning, but
+hard-faulted immediately on real hardware (PC locked at `0xEFFFFFFE`,
+`IPSR`=HardFault, reproducible across a full chip erase + reprogram cycle
+-- confirmed via a real J-Link register read, not guessed). This board's
+TF-M integration needs sysbuild orchestrating it, evidently -- both
+`https_init` and the sibling `embedded-departure-board` project boot TF-M
+via sysbuild+MCUboot successfully on this exact physical unit, so that
+proven pattern was adopted here too (`sysbuild.conf` +
+`sysbuild/mcuboot/boards/circuitdojo_feather_nrf916{0,1}.{conf,overlay}`,
+cribbed from `https_init`) rather than continuing to debug non-sysbuild
+TF-M boot blind. MCUboot itself doesn't need or use FOTA-related
+Kconfig here (no `CONFIG_MCUMGR`/DFU) -- it's present purely because this
+board apparently needs *something* in the sysbuild multi-image path to
+produce a bootable TF-M image, matching the two other samples/projects
+that already boot on this hardware.
+
+This sample still needed `boards/circuitdojo_feather_nrf916{0,1}_ns.overlay`
+independent of the MCUboot question: the stock 192 KB nonsecure flash
+split isn't enough for HTTPS+TLS+cellular+GNSS with any reasonable
+logging (confirmed by an actual failing link, "region FLASH overflowed,"
+before adding the overlay -- not assumed up front). The overlay rebalances
+slot0 to 128 KB secure / 320 KB nonsecure, the same split and the same
+delete-then-redefine mechanism `https_init`'s overlay uses, for a
+different reason (this sample's own footprint) -- MCUboot doesn't care
+about the secure/nonsecure split within slot0 (that's TF-M's concern),
+only slot0's total size, which this rebalance leaves unchanged. `slot1`
+is left untouched at its stock size.
 
 **Wedge recovery** (`CONFIG_PIGEON_REBOOT_ON_FATAL`/`CONFIG_PIGEON_WATCHDOG`,
 task #45): both turned on, zero app code needed beyond the Kconfig -- a
@@ -562,8 +597,9 @@ expected here at all), or `gnss: SIMULATED GPS mode enabled -- reporting a
 fabricated 50m circuit around ...` followed by `shadow: Position (SIMULATED):
 ...` every poll (`CONFIG_ASSET_TRACKER_SIM_GPS=y` build) -- either way,
 confirm the corresponding `gps_*` keys actually land in
-`GET /pigeons/:id/telemetry/latest` against the real staging backend, which
-is the one thing a build-only check can't confirm.
+`GET /pigeons/:id/telemetry` (dashboard-auth'd, latest-value-per-key) and
+`GET /pigeons/:id/telemetry/history` against the real staging backend,
+which is the one thing a build-only check can't confirm.
 
 **Known, honest gap**: no real outdoor GNSS fix has been (or is expected to
 be) exercised -- this board hasn't left a desk. `CONFIG_ASSET_TRACKER_SIM_GPS`
