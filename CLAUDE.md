@@ -373,7 +373,7 @@ compile checks:
 
 ```sh
 west build -d build samples/shadow_model -b native_sim/native/64
-./build/shadow_model/zephyr/zephyr.exe
+./build/zephyr/zephyr.exe
 ```
 
 `https_init` boots under MCUboot via sysbuild (`sysbuild.conf`), and MCUboot doesn't support the

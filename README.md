@@ -131,7 +131,7 @@ iteration:
 ```sh
 source .venv/bin/activate
 west build -d build samples/shadow_model -b native_sim/native/64
-./build/shadow_model/zephyr/zephyr.exe
+./build/zephyr/zephyr.exe
 ```
 
 `wifi_init`/`ws_init` build for real ESP32-C6-DevKitC-1 hardware -- see
