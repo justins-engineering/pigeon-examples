@@ -1,6 +1,8 @@
 #include <pigeon.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/reboot.h>
+#include <zephyr/sys/util.h>
 
 #include "gnss.h"
 #include "net/connection_manager.h"
@@ -8,11 +10,59 @@
 
 LOG_MODULE_REGISTER(main);
 
+/* task #52: a real-hardware finding -- a boot that hits the nRF91 modem's
+ * 30-minute reset-loop restriction (see this repo's CLAUDE.md "Modem reset
+ * safety") makes lte_connect() fail/time out exactly once, and this used
+ * to just return the error straight out of main() with nothing retrying
+ * it, leaving the device fully idle (no LTE, no telemetry, no recovery
+ * path at all) for however long was left of the restriction -- observed
+ * live as a multi-minute-to-multi-hour silent gap, with CONFIG_PIGEON_WATCHDOG
+ * unable to help since it only feeds on a successful telemetry report,
+ * which never happens if LTE never comes up in the first place. Retries
+ * a bounded number of rounds with backoff (each round already carries
+ * lte_connect()'s own internal LTE_CONNECT_TIMEOUT and graceful
+ * lte_disconnect() on failure, see connection_manager.c), then
+ * self-reboots -- a fresh boot is often enough to get past a transient
+ * failure (a restriction expiring mid-wait, a brief coverage gap), and
+ * bounded reboots are still strictly better than silently giving up
+ * forever on the very first failed attempt. */
+static int lte_connect_with_retry(void) {
+  uint32_t backoff_sec = CONFIG_ASSET_TRACKER_LTE_CONNECT_BACKOFF_BASE_SEC;
+
+  for (int round = 1; round <= CONFIG_ASSET_TRACKER_LTE_CONNECT_MAX_ROUNDS; round++) {
+    int err = lte_connect();
+
+    if (!err) {
+      return 0;
+    }
+
+    LOG_ERR(
+        "lte_connect() round %d/%d failed: %d", round, CONFIG_ASSET_TRACKER_LTE_CONNECT_MAX_ROUNDS,
+        err
+    );
+
+    if (round == CONFIG_ASSET_TRACKER_LTE_CONNECT_MAX_ROUNDS) {
+      break;
+    }
+
+    LOG_WRN("Retrying lte_connect() in %d s", backoff_sec);
+    k_sleep(K_SECONDS(backoff_sec));
+    backoff_sec = MIN(backoff_sec * 2, CONFIG_ASSET_TRACKER_LTE_CONNECT_BACKOFF_MAX_SEC);
+  }
+
+  LOG_ERR(
+      "lte_connect() failed all %d rounds; rebooting for a fresh attempt",
+      CONFIG_ASSET_TRACKER_LTE_CONNECT_MAX_ROUNDS
+  );
+
+  return -ENOTCONN;
+}
+
 int main(void) {
-  int err = lte_connect();
+  int err = lte_connect_with_retry();
 
   if (err) {
-    return err;
+    sys_reboot(SYS_REBOOT_COLD);
   }
 
   /* Endpoint and token come from CONFIG_PIGEON_ENDPOINT/CONFIG_PIGEON_TOKEN
