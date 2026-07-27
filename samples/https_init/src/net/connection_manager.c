@@ -157,6 +157,27 @@ int lte_connect(void) {
     return err;
   }
 
+#if defined(CONFIG_NET_NATIVE_OFFLOADED_SOCKETS_CONNECTIVITY_SIM)
+  /* The NSOS connectivity-sim interface (this sample's native_sim stand-in
+   * for a real network interface, no cellular modem involved -- see this
+   * repo's README) never runs DHCP and has no L2 of its own to assign an
+   * address, but conn_mgr's L4 state machine only fires
+   * NET_EVENT_L4_CONNECTED once the interface is BOTH "connected" and
+   * carries an address (confirmed against Zephyr's own
+   * tests/net/conn_mgr_nsos, which does exactly this before triggering its
+   * connect -- "Add an IP address so that NET_EVENT_L4_CONNECTED can
+   * trigger"). Without it, lte_connect() below hangs until
+   * LTE_CONNECT_TIMEOUT even though NSOS's own socket layer comes up fine.
+   * Never used for real routing -- NSOS offloaded sockets bypass Zephyr's
+   * IP stack entirely -- purely to satisfy conn_mgr's gating check, same
+   * fix as coap_tcp_init/wifi_init's connection managers. */
+  struct net_if *native_sim_iface = net_if_get_default();
+  struct in_addr native_sim_dummy_addr;
+
+  net_addr_pton(AF_INET, "192.0.2.1", &native_sim_dummy_addr);
+  net_if_ipv4_addr_add(native_sim_iface, &native_sim_dummy_addr, NET_ADDR_MANUAL, 0);
+#endif
+
   LOG_INF("Connecting to the network");
 
   err = conn_mgr_all_if_connect(true);
