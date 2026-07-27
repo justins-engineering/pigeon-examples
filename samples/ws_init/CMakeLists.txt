@@ -37,5 +37,13 @@ target_sources(app PRIVATE
   src/main.c
   src/shadow.c
   src/heap_monitor.c
-  src/net/wifi_connection_manager.c
 )
+
+# native_sim has no ESP32-C6 WiFi radio -- swap in a generic conn_mgr-over-NSOS
+# connection manager instead (see src/net/native_sim_connection_manager.c's
+# own header comment, and wifi_init's identical CMakeLists.txt convention).
+if(CONFIG_BOARD_NATIVE_SIM)
+  target_sources(app PRIVATE src/net/native_sim_connection_manager.c)
+else()
+  target_sources(app PRIVATE src/net/wifi_connection_manager.c)
+endif()
