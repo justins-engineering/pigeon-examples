@@ -57,7 +57,7 @@ static void set_all_log_levels(uint32_t level) {
 static void report_uptime(void) {
   char uptime_s[16];
 
-  snprintk(uptime_s, sizeof(uptime_s), "%lld", k_uptime_get() / 1000);
+  snprintk(uptime_s, sizeof(uptime_s), "%lld", (long long)(k_uptime_get() / 1000));
 
   int err = pigeon_set_shadow_param("uptime_s", uptime_s);
 

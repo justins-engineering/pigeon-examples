@@ -75,7 +75,7 @@ static void report_metric(const char *key, const char *val) {
 static void report_uptime(void) {
   char uptime_s[16];
 
-  snprintk(uptime_s, sizeof(uptime_s), "%lld", k_uptime_get() / 1000);
+  snprintk(uptime_s, sizeof(uptime_s), "%lld", (long long)(k_uptime_get() / 1000));
   report_metric("uptime_s", uptime_s);
 }
 
