@@ -78,19 +78,29 @@ static void set_all_log_levels(uint32_t level) {
   }
 }
 
-/* Reports uptime via the device telemetry path (pigeon_set_shadow_param() +
- * pigeon_shadow_flush(), POSTing to <endpoint>/telemetry -- dovecote's
- * report_telemetry_device, working as of 2026-07-15, see pigeon's CLAUDE.md).
- * Unrelated to shadow config ack (see pigeon_shadow_report() below). */
-static void report_uptime(void) {
-  char uptime_s[16];
+/* Reports uptime and this boot's poll count via the device telemetry path:
+ * pigeon_telemetry_set() per key, then ONE pigeon_telemetry_flush() -- both
+ * keys ride a single POST to <endpoint>/telemetry (dovecote's
+ * report_telemetry_device upserts every key in the body), instead of the
+ * one-POST-per-key the old single-slot set+flush API forced. Unrelated to
+ * shadow config ack (see pigeon_shadow_report() below). poll_count
+ * restarting from 1 doubles as a cheap reboot indicator on the dashboard. */
+static void report_telemetry(void) {
+  static unsigned int poll_count;
+  char buf[16];
 
-  snprintk(uptime_s, sizeof(uptime_s), "%lld", (long long)(k_uptime_get() / 1000));
+  snprintk(buf, sizeof(buf), "%lld", (long long)(k_uptime_get() / 1000));
 
-  int err = pigeon_set_shadow_param("uptime_s", uptime_s);
+  int err = pigeon_telemetry_set("uptime_s", buf);
+
+  snprintk(buf, sizeof(buf), "%u", ++poll_count);
 
   if (!err) {
-    err = pigeon_shadow_flush();
+    err = pigeon_telemetry_set("poll_count", buf);
+  }
+
+  if (!err) {
+    err = pigeon_telemetry_flush();
   }
 
   if (err) {
@@ -123,7 +133,7 @@ int shadow_sync(void) {
   pigeon_fota_confirm_boot();
 #endif
 
-  report_uptime();
+  report_telemetry();
 
   if (doc.target_version == doc.current_version) {
     LOG_INF("Shadow already converged at version %d; nothing to apply", doc.current_version);

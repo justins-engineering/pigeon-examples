@@ -30,13 +30,12 @@ int main(void) {
     return err;
   }
 
-  /* pigeon_set_shadow_param() (queuing local metrics/state to push to the
-   * platform) is declared in pigeon.h but not yet implemented, so it's not
-   * called here -- only the platform -> device direction (shadow_loop) is
-   * wired up so far. shadow_loop() polls forever (interval driven by the
-   * shadow's own telemetry_interval field), matching a normally-connected
-   * device rather than this sample's original one-shot connect/disconnect;
-   * it does not return under normal operation. */
+  /* Both directions live in shadow.c: platform -> device (shadow fetch +
+   * apply) and device -> platform (batched telemetry via
+   * pigeon_telemetry_set()/pigeon_telemetry_flush()). shadow_loop() polls
+   * forever (interval driven by the shadow's own telemetry_interval field),
+   * matching a normally-connected device rather than this sample's original
+   * one-shot connect/disconnect; it does not return under normal operation. */
   shadow_loop();
 
   return lte_disconnect();

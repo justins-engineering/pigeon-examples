@@ -53,30 +53,28 @@ static void set_all_log_levels(uint32_t level) {
   }
 }
 
-/* Single-key set+flush pair (pigeon_set_shadow_param()/pigeon_shadow_flush()
- * queue and send exactly one shadow delta at a time -- see pigeon's
- * CLAUDE.md), shared by every telemetry key this sample reports so
- * report_uptime()/report_position() below don't each repeat the same
- * queue-then-flush-then-log-on-failure boilerplate. POSTs to
- * <endpoint>/telemetry, not the shadow config-ack endpoint -- see
- * pigeon_shadow_flush()'s own doc comment in pigeon.h. */
-static void report_metric(const char *key, const char *val) {
-  int err = pigeon_set_shadow_param(key, val);
-
-  if (!err) {
-    err = pigeon_shadow_flush();
-  }
+/* Queues one telemetry key (pigeon_telemetry_set(), latest-value-per-key)
+ * WITHOUT flushing -- shadow_sync() flushes the whole cycle's batch in one
+ * pigeon_telemetry_flush() after queue_uptime()/queue_position() below have
+ * queued everything, so all (up to 8) keys ride a single POST to
+ * <endpoint>/telemetry instead of the one-POST-per-key this helper used to
+ * do with the old single-slot set+flush API. Over LTE-M that's one TLS
+ * connect/request/teardown per report cycle instead of up to eight. Not
+ * the shadow config-ack endpoint -- see pigeon_telemetry_flush()'s own doc
+ * comment in pigeon.h. */
+static void queue_metric(const char *key, const char *val) {
+  int err = pigeon_telemetry_set(key, val);
 
   if (err) {
-    LOG_WRN("Telemetry report failed for '%s'='%s': %d", key, val, err);
+    LOG_WRN("Failed to queue telemetry '%s'='%s': %d", key, val, err);
   }
 }
 
-static void report_uptime(void) {
+static void queue_uptime(void) {
   char uptime_s[16];
 
   snprintk(uptime_s, sizeof(uptime_s), "%lld", (long long)(k_uptime_get() / 1000));
-  report_metric("uptime_s", uptime_s);
+  queue_metric("uptime_s", uptime_s);
 }
 
 /* Reports the latest GNSS (or simulated) position as a handful of numeric
@@ -86,7 +84,7 @@ static void report_uptime(void) {
  * nothing. The position fields themselves (lat/lon/alt/speed/heading) are
  * only meaningful -- and only reported -- once fix_quality says there's an
  * actual fix (real or simulated) to report. */
-static void report_position(void) {
+static void queue_position(void) {
   struct tracker_position pos;
 
   tracker_gnss_get_latest(&pos);
@@ -94,10 +92,10 @@ static void report_position(void) {
   char buf[32];
 
   snprintk(buf, sizeof(buf), "%d", (int)pos.fix_quality);
-  report_metric("gps_fix_quality", buf);
+  queue_metric("gps_fix_quality", buf);
 
   snprintk(buf, sizeof(buf), "%d", pos.sats);
-  report_metric("gps_sats", buf);
+  queue_metric("gps_sats", buf);
 
   if (pos.fix_quality == TRACKER_FIX_NONE) {
     LOG_INF("No GNSS fix yet (%d satellites tracked); position not reported", pos.sats);
@@ -105,19 +103,19 @@ static void report_position(void) {
   }
 
   snprintk(buf, sizeof(buf), "%.6f", pos.latitude);
-  report_metric("gps_lat", buf);
+  queue_metric("gps_lat", buf);
 
   snprintk(buf, sizeof(buf), "%.6f", pos.longitude);
-  report_metric("gps_lon", buf);
+  queue_metric("gps_lon", buf);
 
   snprintk(buf, sizeof(buf), "%.1f", (double)pos.altitude_m);
-  report_metric("gps_alt_m", buf);
+  queue_metric("gps_alt_m", buf);
 
   snprintk(buf, sizeof(buf), "%.2f", (double)pos.speed_mps);
-  report_metric("gps_speed_mps", buf);
+  queue_metric("gps_speed_mps", buf);
 
   snprintk(buf, sizeof(buf), "%.1f", (double)pos.heading_deg);
-  report_metric("gps_heading_deg", buf);
+  queue_metric("gps_heading_deg", buf);
 
   LOG_INF(
       "Position (%s): %.6f,%.6f alt=%.1fm speed=%.2fm/s heading=%.1fdeg sats=%d",
@@ -140,8 +138,14 @@ int shadow_sync(void) {
       doc.current_version, doc.updated_at
   );
 
-  report_uptime();
-  report_position();
+  queue_uptime();
+  queue_position();
+
+  int flush_err = pigeon_telemetry_flush();
+
+  if (flush_err) {
+    LOG_WRN("Telemetry flush failed: %d (queued keys kept for next cycle)", flush_err);
+  }
 
   if (doc.target_version == doc.current_version) {
     LOG_INF("Shadow already converged at version %d; nothing to apply", doc.current_version);

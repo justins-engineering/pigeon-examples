@@ -84,7 +84,8 @@ Each sample is independently buildable. `https_init` and `coap_tcp_init` both
 enable `CONFIG_PIGEON` now that `pigeon`'s HTTPS and CoAP-over-TLS/TCP
 transports (`pigeon_https.c`/`pigeon_coap.c`) are implemented, and both
 exercise the shadow-sync loop (fetch, apply, and report back via
-`pigeon_set_shadow_param()`/`pigeon_shadow_flush()`). `shadow_model` still
+`pigeon_telemetry_set()`/`pigeon_telemetry_flush()` — pigeon's batched
+telemetry API; every key queued during a cycle rides one POST). `shadow_model` still
 leaves `CONFIG_PIGEON` disabled (see note in its `prj.conf`) since it only
 needs `pigeon_init()` and the data structures in `pigeon.h`, which work
 regardless — `pigeon`'s `CMakeLists.txt` compiles `pigeon_core.c`
@@ -268,14 +269,14 @@ Expected boot sequence on a working device + live backend:
 <inf> pigeon: Transport mapped to secure HTTPS edge pipeline: https://<backend-host>/device/pigeons/<pigeon-id>
 <inf> pigeon: Pigeon tracking instance ready: <device-id>
 <inf> shadow: Shadow fetched: target_version=N current_version=M updated_at=...
-<inf> pigeon: Flushed shadow param: uptime_s=...
+<inf> pigeon: Flushed 2 telemetry key(s) in one report (NN bytes)
 <inf> shadow: Next shadow poll in 60 s
 ```
 
-"Flushed shadow param: uptime_s=..." is telemetry, not a shadow report,
-despite the log line's name — see the comment above `pigeon_shadow_flush()`
-in `shadow.c`; it's a `pigeon_set_shadow_param()` + `pigeon_shadow_flush()`
-pair that POSTs to `<endpoint>/telemetry`. A device only POSTs a shadow
+The flush line is telemetry, not a shadow report — see `report_telemetry()`
+in `shadow.c`; it's a batch of `pigeon_telemetry_set()` calls (`uptime_s` +
+`poll_count`) drained by one `pigeon_telemetry_flush()`, i.e. a single POST
+to `<endpoint>/telemetry` carrying every queued key. A device only POSTs a shadow
 *report* (`pigeon_shadow_report()`) when `target_version` fetched from the
 shadow differs from `current_version` — with nothing new targeted, you'll
 instead see `shadow: Shadow already converged at version N; nothing to
@@ -451,8 +452,9 @@ lands.
 built-in GNSS receiver on a Circuit Dojo nRF9151 Feather -- cellular +
 GPS is the canonical "asset tracker" combo, and unlike `wifi_init`/`ws_init`
 it needed no new transport work in `pigeon` itself, only a new position
-source feeding the existing `pigeon_set_shadow_param()`/`pigeon_shadow_flush()`
-telemetry path. Structurally it's `https_init` minus FOTA/log-upload (see
+source feeding the existing `pigeon_telemetry_set()`/`pigeon_telemetry_flush()`
+telemetry path (all eight keys — uptime plus seven GNSS metrics — batch into
+one POST per report cycle, which matters on LTE-M). Structurally it's `https_init` minus FOTA/log-upload (see
 "Design choices" below) plus `src/gnss.c`.
 
 ### Design choices

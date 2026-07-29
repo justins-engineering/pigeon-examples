@@ -145,9 +145,10 @@ The most developed sample; treat it as the reference consumer of `pigeon`.
   and `reboot` is a one-shot command (deliberately excluded from the persisted `current_config` so
   it doesn't refire every poll). `shadow_loop()` re-polls on the shadow's own `telemetry_interval`.
   Each sync also exercises both device→platform report paths, which dovecote now serves (as of
-  2026-07-15 — see `~/pigeon/CLAUDE.md` for the wire contract): `pigeon_set_shadow_param()`/
-  `pigeon_shadow_flush()` (shared `pigeon_core.c` plumbing over the per-transport
-  `pigeon_transport_report_shadow` hook) POSTs an `uptime_s` metric to `/telemetry`, and — only when
+  2026-07-15 — see `~/pigeon/CLAUDE.md` for the wire contract): `pigeon_telemetry_set()`/
+  `pigeon_telemetry_flush()` (shared `pigeon_core.c` plumbing over the per-transport
+  `pigeon_transport_report_telemetry` hook; batched since 2026-07-29 — one flush sends every
+  queued key in one POST) reports `uptime_s` + `poll_count` metrics to `/telemetry`, and — only when
   a new target was actually applied — `pigeon_shadow_report()` POSTs the applied `current_config` +
   version back to `/shadow` to ack the config change. Distinct endpoints, distinct purposes:
   telemetry is a latest-value-per-key metric store; the shadow report closes the config-convergence
