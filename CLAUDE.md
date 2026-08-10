@@ -47,9 +47,14 @@ pigeon-examples/            <- west topdir; this repo's git history covers sampl
                                 # zephyr/, nrfxlib/, mcuboot/, mbedtls/, etc. via name-allowlist
     pigeon_module.cmake         # shared by every sample: ZEPHYR_EXTRA_MODULES += ../pigeon
     https_init/                 # pigeon_init() over HTTPS — the reference/most-developed sample
-    coap_tcp_init/               # pigeon_init() over CoAP-over-TLS/TCP, mirrors https_init's shadow
-                                  # sync; builds for native_sim + real hardware, not yet wire-compatible
-                                  # (see pigeon's CLAUDE.md: backend only speaks coaps:// UDP/DTLS so far)
+    coap_tcp_init/               # pigeon_init() over CoAP-over-TLS/TCP (RFC 8323), mirrors https_init's
+                                  # shadow sync; NCS-manifest sample (unguarded modem/lte_lc.h -- its
+                                  # native_sim variant builds under west.yml, not west-vanilla.yml)
+    coap_dtls_init/              # pigeon_init() over CoAP-over-DTLS/UDP (RFC 7252, PSK + Connection ID)
+                                  # -- the primary constrained-device transport; native_sim variant builds
+                                  # under the DEFAULT vanilla manifest (board-conditional connection
+                                  # manager, wifi_init pattern), nrf9160 flavor under west.yml. Verified
+                                  # e2e against libcoap (see README "CoAP over DTLS" section)
     shadow_model/                # builds pigeon_shadow_doc/pigeon_shadow_update_request and logs them;
                                   # no transport, exists to sanity-check the data structures compile/link
     wifi_init/                   # pigeon_init() over HTTPS on ESP32-C6-DevKitC-1 (WiFi, not LTE);

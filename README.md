@@ -93,7 +93,8 @@ unconditionally.
 
 ## Setup
 
-Default (vanilla Zephyr -- `wifi_init`, `ws_init`, `shadow_model`):
+Default (vanilla Zephyr -- `wifi_init`, `ws_init`, `shadow_model`, and
+`coap_dtls_init`'s `native_sim` variant):
 
 ```sh
 python3 -m venv .venv && source .venv/bin/activate
@@ -102,7 +103,8 @@ west init -l samples          # picks up west-vanilla.yml (the default manifest.
 west update
 ```
 
-For the nRF91 cellular samples (`https_init`, `coap_tcp_init`), use a
+For the nRF91 cellular samples (`https_init`, `coap_tcp_init`, and
+`coap_dtls_init`'s `circuitdojo_feather/nrf9160/ns` flavor), use a
 **separate topdir** pointed at `west.yml` instead -- the two manifests'
 vendored trees aren't interchangeable, so don't try to reuse one topdir for
 both:
@@ -200,6 +202,71 @@ The `../pigeon` repo's `.vscode/settings.json` points clangd at
 `build/https_init/compile_commands.json` here (via a `pigeon/build` symlink to
 this repo's `build/`), so keep `https_init` building under plain `build/` for
 IDE tooling to resolve `pigeon`'s includes.
+
+## CoAP over DTLS (`coap_dtls_init`) and the libcoap conformance rig
+
+`coap_dtls_init` exercises `pigeon`'s CoAP-over-DTLS/UDP transport
+(`CONFIG_PIGEON_COAP_TRANSPORT_UDP` -- RFC 7252 confirmable exchanges with
+real retransmission/dedup on one long-lived PSK DTLS session, RFC 9146
+Connection ID offered by default; `coap_tcp_init` remains the RFC 8323
+TLS/TCP sibling). The real dovecote backend still has **no CoAP listener
+deployed** (the terminator is a tracked roadmap item), so this sample's
+protocol conformance peer is [libcoap](https://libcoap.net)'s
+`coap-server`/`coap-client`, which is a stronger independent check anyway
+-- it's a from-scratch third-party CoAP implementation, not our own code
+agreeing with itself.
+
+The 2026-08-10 verification matrix, all on `native_sim/native/64` against a
+locally-built libcoap (`-DENABLE_DTLS=ON -DENABLE_TCP=ON`, examples on):
+
+- **DTLS-PSK handshake + full platform cycle** (shadow GET -> JSON decode ->
+  apply -> `pigeon_shadow_report()` ack, batched telemetry POST), against
+  both the OpenSSL and mbedTLS libcoap backends.
+- **`TLS_PSK_WITH_AES_128_CCM_8` (0xC0A8) negotiated** when the server is
+  pinned to exactly that suite (libcoap OpenSSL backend rebuilt with
+  `-DCOAP_OPENSSL_CIPHERS='"PSK-AES128-CCM8:@SECLEVEL=0"'` --
+  `@SECLEVEL=0` is required or OpenSSL itself rejects CCM8's 64-bit tag);
+  with an unpinned server the suite settles on 0xC0A5
+  (`TLS_PSK_WITH_AES_256_CCM`, server preference). The device logs the
+  negotiated suite id per session.
+- **Retransmission under induced loss**: a scratch UDP proxy
+  (record-type-aware -- DTLS record headers are plaintext, so
+  "drop the Nth application-data datagram in direction X" needs no keys)
+  dropped the first response, and separately the first request; both times
+  the device retransmitted the identical CON ~2.1s later
+  (`CONFIG_COAP_INIT_ACK_TIMEOUT_MS` x randomization) and the exchange
+  completed. A full blackhole shows the exponential backoff (+2.8s, +5.5s,
+  +11s, +22s) before `-ETIMEDOUT`.
+- **Wrong PSK rejected**: server keyed differently -> handshake never
+  completes (server silently discards, client times out at the DTLS layer,
+  `-116`); no CoAP bytes flow.
+- **Connection ID, both directions of the claim**: against libcoap-mbedTLS
+  (CID-capable), client->server records switch to content type 25
+  (`tls12_cid`) and a mid-session source-port rebind (proxy re-binds its
+  server-facing socket -- simulated carrier-NAT rebind) is survived with
+  **zero re-handshake**; against libcoap-OpenSSL (no CID), the same rebind
+  costs the full retransmit window + a re-handshake, which `pigeon`
+  performs automatically on the next poll. Do NOT trust the device's
+  "CID status" log line as the positive signal on native builds -- see
+  `docs/upstream-issues/zephyr-sockets_tls-dtls-cid-status-uninitialized.md`.
+- **TCP regression**: the unchanged `coap_tcp_init` (NCS topdir build) ran
+  its first-ever live server exchange -- shadow/telemetry/report all pass
+  against libcoap's TLS/TCP listener, after `pigeon` gained the RFC 8323
+  CSM exchange a real server turns out to require (libcoap greets with a
+  7.01 Capabilities message and expects one back; dovecote never having had
+  a listener meant this MUST had never been exercised).
+
+Board configs: `boards/native_sim_native_64.conf` carries the native
+mbedTLS DTLS-PSK stack (including the non-obvious
+`CONFIG_PSA_WANT_KEY_TYPE_DERIVE`/`_HMAC`/`ALG_HMAC`/`ALG_TLS12_PRF` set
+-- without them the PSK never imports into PSA and the handshake dies
+before any traffic, mbedTLS `-0x7F80`); the nRF9160 flavor instead turns on
+`CONFIG_MODEM_KEY_MGMT`, which switches `pigeon`'s PSK registration to the
+modem's own credential store, written eagerly at `pigeon_init()` time --
+which is why this sample's `main.c` calls `pigeon_init()` **before**
+`lte_connect()`, the reverse of `coap_tcp_init`'s ordering. The nRF9160
+build is compile-verified only (no CoAP terminator deployed to talk to over
+LTE, and no bench time on this task).
 
 ## Flashing `https_init` to real hardware
 
