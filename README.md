@@ -196,11 +196,15 @@ source .venv/bin/activate
 west build -d build samples/asset_tracker -b circuitdojo_feather_nrf9151/nrf9151/ns -- -DBOARD_ROOT=$(pwd)/samples
 ```
 
-No sysbuild/MCUboot here (unlike `https_init`) -- this sample doesn't do
-FOTA, so it's a single plain image. See "GNSS asset tracker" below for the
-board overlay this still needs (a slot0 secure/nonsecure rebalance, same
-mechanism `https_init`'s board overlay uses, for a different reason -- this
-sample's own flash footprint, not a second MCUboot slot).
+Uses sysbuild/MCUboot on both boards -- a plain non-sysbuild TF-M build hard-
+faulted immediately on real nRF9160 silicon, so sysbuild orchestrating TF-M
+turned out to be required here too, same as `https_init`/`embedded-departure-
+board` on the same hardware. This sample still doesn't do FOTA (no
+`CONFIG_PIGEON_FOTA`), so it's a single-slot MCUboot image, not a swap-
+capable second slot. See "GNSS asset tracker" below for the board overlay
+this still needs (a slot0 secure/nonsecure rebalance, same mechanism
+`https_init`'s board overlay uses, for a different reason -- this sample's
+own flash footprint).
 
 The `../pigeon` repo's `.vscode/settings.json` points clangd at
 `build/https_init/compile_commands.json` here (via a `pigeon/build` symlink to
