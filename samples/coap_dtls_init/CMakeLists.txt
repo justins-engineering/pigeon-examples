@@ -20,15 +20,20 @@ target_sources(app PRIVATE
   src/shadow.c
 )
 
-# native_sim has no modem (and, in this workspace's default vanilla-Zephyr
-# manifest, no NCS modem/lte_lc.h to even compile against) -- swap in a
-# generic conn_mgr-over-NSOS connection manager instead, the same
-# board-conditional-source pattern wifi_init/ws_init use (see
-# src/net/native_sim_connection_manager.c's own header comment). Both files
-# export the same lte_connect()/lte_disconnect() names, so main.c/shadow.c
-# need no board-specific code of their own.
+# Three board-conditional network bring-ups, all exporting the same
+# lte_connect()/lte_disconnect() names so main.c/shadow.c need no
+# board-specific code of their own:
+#  - native_sim has no modem (and, in this workspace's default vanilla-
+#    Zephyr manifest, no NCS modem/lte_lc.h to even compile against) --
+#    swap in a generic conn_mgr-over-NSOS connection manager instead (see
+#    src/net/native_sim_connection_manager.c's own header comment).
+#  - ESP32-C6 has no modem either, but a real WiFi radio -- reuses ws_init/
+#    wifi_init's join/retry logic (see src/net/wifi_connection_manager.c).
+#  - everything else (the nRF9160 family) keeps the original LTE bring-up.
 if(CONFIG_BOARD_NATIVE_SIM)
   target_sources(app PRIVATE src/net/native_sim_connection_manager.c)
+elseif(CONFIG_SOC_SERIES_ESP32C6)
+  target_sources(app PRIVATE src/net/wifi_connection_manager.c)
 else()
   target_sources(app PRIVATE src/net/connection_manager.c)
 endif()
