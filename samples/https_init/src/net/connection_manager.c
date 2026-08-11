@@ -1,7 +1,15 @@
 /** @headerfile connection_manager.h */
 #include "connection_manager.h"
 
+/* CONFIG_LTE_LINK_CONTROL only comes on (transitively, via
+ * CONFIG_NRF_MODEM_LIB_NET_IF) on the real nRF91 board confs -- under this
+ * workspace's default vanilla-Zephyr manifest the NCS modem/lte_lc.h header
+ * this brings in doesn't exist at all, so native_sim can't even include it,
+ * let alone call into it (see lte_disconnect() below for the other half of
+ * this split). */
+#ifdef CONFIG_LTE_LINK_CONTROL
 #include <modem/lte_lc.h>
+#endif
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/conn_mgr_connectivity.h>
@@ -225,14 +233,7 @@ int lte_disconnect(void) {
     LOG_ERR("conn_mgr_all_if_down, error: %d", err);
   }
 
-  /* native_sim has no real modem to power off, and CONFIG_LTE_LINK_CONTROL
-   * isn't available there -- lte_lc_power_off() wouldn't even link. Graceful
-   * CFUN=0 shutdown only matters for the reset-loop protection on real nRF91
-   * hardware (see this repo's CLAUDE.md "Modem reset safety" note). */
-  if (IS_ENABLED(CONFIG_BOARD_NATIVE_SIM)) {
-    return err;
-  }
-
+#ifdef CONFIG_LTE_LINK_CONTROL
   /* conn_mgr_all_if_down() only sends CFUN=20 (deactivate LTE); explicitly
    * power off (CFUN=0) so the modem counts this as a graceful shutdown and
    * doesn't arm its reset-loop protection on the next boot. Only a
@@ -260,6 +261,12 @@ int lte_disconnect(void) {
   }
 
   LOG_INF("Modem powered off gracefully (CFUN=0 confirmed)");
+#else
+  /* native_sim (and any other board built under this workspace's vanilla
+   * manifest) has no real modem to power off -- graceful CFUN=0 shutdown
+   * only matters for the reset-loop protection on real nRF91 hardware (see
+   * this repo's CLAUDE.md "Modem reset safety" note). */
+#endif
 
   return err;
 }
