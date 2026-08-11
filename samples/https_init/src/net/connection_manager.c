@@ -171,10 +171,10 @@ int lte_connect(void) {
    * repo's README) never runs DHCP and has no L2 of its own to assign an
    * address, but conn_mgr's L4 state machine only fires
    * NET_EVENT_L4_CONNECTED once the interface is BOTH "connected" and
-   * carries an address (confirmed against Zephyr's own
-   * tests/net/conn_mgr_nsos, which does exactly this before triggering its
-   * connect -- "Add an IP address so that NET_EVENT_L4_CONNECTED can
-   * trigger"). Without it, lte_connect() below hangs until
+   * carries an address -- the same technique Zephyr's own
+   * tests/net/conn_mgr_nsos uses before triggering its connect ("Add an IP
+   * address so that NET_EVENT_L4_CONNECTED can trigger"). Without it,
+   * lte_connect() below hangs until
    * LTE_CONNECT_TIMEOUT even though NSOS's own socket layer comes up fine.
    * Never used for real routing -- NSOS offloaded sockets bypass Zephyr's
    * IP stack entirely -- purely to satisfy conn_mgr's gating check, same

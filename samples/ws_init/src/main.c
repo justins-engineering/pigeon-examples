@@ -43,7 +43,7 @@ int main(void) {
   }
 #endif
 
-  /* Task #15: soak-test instrumentation for the recurring real-hardware
+  /* Soak-test instrumentation for the recurring real-hardware
    * "esp32c6_wifi_adapter: memory allocation failed" reports -- see
    * heap_monitor.h. Started after wifi_connect()/pigeon_init() so the first
    * sample already reflects post-connect steady state, not boot-time churn. */

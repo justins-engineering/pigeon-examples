@@ -20,13 +20,13 @@
   chosen {
     /* Critical: MCUboot must link itself against boot_partition (0x0), not
      * the board's default zephyr,code-partition (&slot0_partition, 0x10000).
-     * This used to live in ../app.overlay, but Zephyr's devicetree-overlay
-     * lookup (zephyr/cmake/modules/configuration_files.cmake) is a cascading
-     * fallback, not a merge: once a boards/<board>.overlay is found (this
-     * file), it NEVER falls through to check app.overlay too. Having both
-     * meant this override was silently never applied — MCUboot was flashed
-     * at 0x0 but linked/executing as if based at 0x10000, causing an
-     * immediate crash. Keep this override here, not in a separate app.overlay. */
+     * This has to live here, not in a separate app.overlay: Zephyr's
+     * devicetree-overlay lookup (zephyr/cmake/modules/configuration_files.cmake)
+     * is a cascading fallback, not a merge -- once a boards/<board>.overlay is
+     * found (this file), it NEVER falls through to check app.overlay too. If
+     * this override lived in app.overlay instead it would be silently never
+     * applied: MCUboot would be flashed at 0x0 but linked/executing as if
+     * based at 0x10000, an immediate crash. */
     zephyr,code-partition = &boot_partition;
 
     zephyr,console = &uart0;

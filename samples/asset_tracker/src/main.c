@@ -10,22 +10,21 @@
 
 LOG_MODULE_REGISTER(main);
 
-/* task #52: a real-hardware finding -- a boot that hits the nRF91 modem's
- * 30-minute reset-loop restriction (see this repo's CLAUDE.md "Modem reset
- * safety") makes lte_connect() fail/time out exactly once, and this used
- * to just return the error straight out of main() with nothing retrying
- * it, leaving the device fully idle (no LTE, no telemetry, no recovery
- * path at all) for however long was left of the restriction -- observed
- * live as a multi-minute-to-multi-hour silent gap, with CONFIG_PIGEON_WATCHDOG
- * unable to help since it only feeds on a successful telemetry report,
- * which never happens if LTE never comes up in the first place. Retries
- * a bounded number of rounds with backoff (each round already carries
- * lte_connect()'s own internal LTE_CONNECT_TIMEOUT and graceful
- * lte_disconnect() on failure, see connection_manager.c), then
- * self-reboots -- a fresh boot is often enough to get past a transient
- * failure (a restriction expiring mid-wait, a brief coverage gap), and
- * bounded reboots are still strictly better than silently giving up
- * forever on the very first failed attempt. */
+/* A boot that hits the nRF91 modem's 30-minute reset-loop restriction
+ * (see this repo's CLAUDE.md "Modem reset safety") makes lte_connect()
+ * fail/time out exactly once. Returning that error straight out of
+ * main() with nothing retrying it would leave the device fully idle (no
+ * LTE, no telemetry, no recovery path at all) for whatever's left of the
+ * restriction -- a multi-minute-to-multi-hour silent gap that
+ * CONFIG_PIGEON_WATCHDOG can't catch, since it only feeds on a successful
+ * telemetry report, which never happens if LTE never comes up in the
+ * first place. Retrying a bounded number of rounds with backoff (each
+ * round already carries lte_connect()'s own internal LTE_CONNECT_TIMEOUT
+ * and graceful lte_disconnect() on failure, see connection_manager.c),
+ * then self-rebooting is more robust: a fresh boot is often enough to
+ * get past a transient failure (a restriction expiring mid-wait, a brief
+ * coverage gap), and bounded reboots are still strictly better than
+ * silently giving up forever on the very first failed attempt. */
 static int lte_connect_with_retry(void) {
   uint32_t backoff_sec = CONFIG_ASSET_TRACKER_LTE_CONNECT_BACKOFF_BASE_SEC;
 

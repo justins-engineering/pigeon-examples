@@ -23,10 +23,10 @@ LOG_MODULE_REGISTER(wifi_connection_manager);
  * trust the ECC root directly; irrelevant here since this device IS the
  * trust store, being handed GTS Root R4 as its own explicit CA anchor).
  *
- * Root-caused via a native_sim harness with the exact same PSA_WANT_*
- * config this sample builds with (~/pigeon-examples/modules/crypto/mbedtls/
- * library/x509_oid.c:389, gated on PSA_WANT_KEY_TYPE_RSA_KEY_PAIR_BASIC):
- * the RSA signature-algorithm OID table entry for "sha256WithRSAEncryption"
+ * Under the exact same PSA_WANT_* config this sample builds with
+ * (~/pigeon-examples/modules/crypto/mbedtls/library/x509_oid.c:389, gated
+ * on PSA_WANT_KEY_TYPE_RSA_KEY_PAIR_BASIC): the RSA signature-algorithm OID
+ * table entry for "sha256WithRSAEncryption"
  * (the cross-sign cert's own signature algorithm) only compiles in when an
  * RSA *key pair* capability is wanted -- this sample only wants
  * CONFIG_PSA_WANT_KEY_TYPE_RSA_PUBLIC_KEY (correct for a pure TLS-client
@@ -44,7 +44,7 @@ LOG_MODULE_REGISTER(wifi_connection_manager);
  * mbedTLS matches a child cert's issuer to a trusted root by subject +
  * public key, not by which of two co-existing certs for that identity was
  * used to establish trust -- both certs in Google's bundle embed the
- * identical EC public key (confirmed via `openssl x509 -text` on each),
+ * identical EC public key (verifiable via `openssl x509 -text` on each),
  * so whatever intermediate (e.g. GTS WE1) actually signs dovecote's leaf
  * cert validates against the self-signed root exactly the same way. The
  * cross-sign only matters for clients relying on a pre-existing OS trust
@@ -160,20 +160,16 @@ int wifi_connect(void) {
    * conn_mgr_conn_all_if_cb() -- unbound ifaces are silently skipped, not
    * an error), and the only such implementation choice here is
    * CONNECTIVITY_WIFI_MGMT_APPLICATION, which is unset (would need an
-   * application-supplied binding this sample never wrote). The previous
-   * version of this comment described a "CONFIG_WIFI_CREDENTIALS_STATIC-
-   * backed connectivity binding" answering the connect -- that machinery
-   * doesn't exist; the board joined nothing on the first-ever hardware
-   * run because of exactly this gap, and the static credentials were
-   * never consumed. Kept anyway (harmless, and forward-compatible if a
-   * future change adds a real conn_mgr WiFi binding) alongside the actual
-   * join request right after: NET_REQUEST_WIFI_CONNECT_STORED (Kconfig
+   * application-supplied binding this sample never wrote).
+   * CONFIG_WIFI_CREDENTIALS_STATIC=y does NOT create that binding either --
+   * it's consumed instead by NET_REQUEST_WIFI_CONNECT_STORED (Kconfig
    * default y, zephyr/subsys/net/l2/wifi/wifi_mgmt.c's
-   * connect_stored_command()), which -- given
-   * CONFIG_WIFI_CREDENTIALS_STATIC=y -- loads
+   * connect_stored_command()) right after, which loads
    * CONFIG_WIFI_CREDENTIALS_STATIC_SSID/_PASSWORD via
    * add_static_network_config() and issues the real NET_REQUEST_WIFI_CONNECT
-   * itself.
+   * itself -- that's the actual join mechanism. conn_mgr_all_if_connect()
+   * is kept anyway (harmless, and forward-compatible if a future change
+   * adds a real conn_mgr WiFi binding).
    */
   err = conn_mgr_all_if_up(true);
   if (err) {
@@ -190,11 +186,11 @@ int wifi_connect(void) {
 
   /*
    * Retried indefinitely rather than surfaced as a wifi_connect() failure
-   * after one attempt: observed on real hardware (repeated boots, this
-   * desk) as genuinely flaky -- alternating ~3-4s join success and full
-   * WIFI_CONNECT_TIMEOUT (30s) timeouts across otherwise identical boots,
-   * cause undiagnosed (AP-side or driver race). Before this loop, a single
-   * failed join left the board dead until a physical reset -- wrong for a
+   * after one attempt: WiFi join here is genuinely flaky in practice --
+   * alternating ~3-4s join success and full WIFI_CONNECT_TIMEOUT (30s)
+   * timeouts across otherwise identical boots, cause undiagnosed (AP-side
+   * or driver race). Surfacing a single failed join as a hard failure
+   * would leave the board dead until a physical reset -- wrong for a
    * headless/unattended device sample, which has no operator to retry it
    * and must keep converging on its own.
    *
@@ -226,8 +222,8 @@ int wifi_connect(void) {
        * forever if the AP is out of range or credentials are wrong --
        * mirrors connection_manager.c's lte_connect() reasoning, minus the
        * modem reset-loop-protection consequence (there's no modem here).
-       * A timeout no longer ends wifi_connect() itself, though -- see this
-       * loop's header comment. */
+       * A timeout doesn't end wifi_connect() itself here, though -- see
+       * this loop's header comment. */
       err = k_sem_take(&network_connection_sem, WIFI_CONNECT_TIMEOUT);
       if (err) {
         LOG_ERR("Attempt %d: timed out waiting for network connectivity: %d", attempt, err);

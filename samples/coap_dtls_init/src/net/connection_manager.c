@@ -13,9 +13,9 @@
  * LTE_LC_MODEM_EVT_RESET_LOOP's doc comment in modem/lte_lc.h). Repeated
  * ungraceful resets (e.g. during development, reflashing without powering
  * off first) make the modem refuse to attach for the next 30 minutes, so
- * lte_disconnect() below explicitly powers off afterward too. Mirrors
- * https_init's connection_manager.c, where this pattern originates -- see
- * this repo's CLAUDE.md "Modem reset safety" note. */
+ * lte_disconnect() below explicitly powers off afterward too. Same pattern
+ * as https_init's connection_manager.c -- see this repo's CLAUDE.md
+ * "Modem reset safety" note for the fuller writeup. */
 #define LTE_CONNECT_TIMEOUT K_SECONDS(120)
 
 LOG_MODULE_REGISTER(connection_manager);
@@ -90,11 +90,11 @@ int lte_connect(void) {
    * for a real network interface -- see this repo's README) never runs DHCP
    * and has no L2 of its own to assign an address, but conn_mgr's L4 state
    * machine only fires NET_EVENT_L4_CONNECTED once the interface is BOTH
-   * "connected" and carries an address (confirmed against Zephyr's own
-   * tests/net/conn_mgr_nsos, which does exactly this before triggering its
-   * connect -- "Add an IP address so that NET_EVENT_L4_CONNECTED can
-   * trigger"). Without it, lte_connect() below hangs until
-   * LTE_CONNECT_TIMEOUT: NSOS's socket layer itself comes up fine (the
+   * "connected" and carries an address -- the same technique Zephyr's own
+   * tests/net/conn_mgr_nsos uses before triggering its connect ("Add an IP
+   * address so that NET_EVENT_L4_CONNECTED can trigger"). Without it,
+   * lte_connect() below hangs until LTE_CONNECT_TIMEOUT: NSOS's socket
+   * layer itself comes up fine (the
    * "nsos_sockets: NSOS: active" log line), but conn_mgr never reports the
    * interface as up. The address is never used for real routing -- NSOS
    * offloaded sockets bypass Zephyr's own IP stack entirely, going straight

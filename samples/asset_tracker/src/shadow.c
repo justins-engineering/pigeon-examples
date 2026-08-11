@@ -57,9 +57,9 @@ static void set_all_log_levels(uint32_t level) {
  * WITHOUT flushing -- shadow_sync() flushes the whole cycle's batch in one
  * pigeon_telemetry_flush() after queue_uptime()/queue_position() below have
  * queued everything, so all (up to 8) keys ride a single POST to
- * <endpoint>/telemetry instead of the one-POST-per-key this helper used to
- * do with the old single-slot set+flush API. Over LTE-M that's one TLS
- * connect/request/teardown per report cycle instead of up to eight. Not
+ * <endpoint>/telemetry rather than one POST per key. Over LTE-M that's
+ * one TLS connect/request/teardown per report cycle instead of up to
+ * eight. Not
  * the shadow config-ack endpoint -- see pigeon_telemetry_flush()'s own doc
  * comment in pigeon.h. */
 static void queue_metric(const char *key, const char *val) {

@@ -7,7 +7,7 @@
  * interface (CONFIG_NET_NATIVE_OFFLOADED_SOCKETS_CONNECTIVITY_SIM -- see
  * this sample's boards/native_sim_native_64.conf) -- the same
  * board-conditional-source pattern wifi_init/ws_init use for their WiFi
- * bring-up (task #54). CMakeLists.txt selects this file instead of
+ * bring-up. CMakeLists.txt selects this file instead of
  * connection_manager.c when CONFIG_BOARD_NATIVE_SIM is set, so pigeon's
  * CoAP/DTLS transport code and everything above this layer (main.c,
  * shadow.c) is untouched -- only network bring-up differs, exactly the
@@ -79,11 +79,10 @@ int lte_connect(void) {
   /* The NSOS connectivity-sim interface never runs DHCP and has no L2 of
    * its own to assign an address, but conn_mgr's L4 state machine only
    * fires NET_EVENT_L4_CONNECTED once the interface is BOTH "connected"
-   * and carries an address (confirmed against Zephyr's own
-   * tests/net/conn_mgr_nsos -- see coap_tcp_init's connection_manager.c,
-   * where this dummy-address pattern originates in this repo). Never used
-   * for real routing: NSOS offloaded sockets bypass Zephyr's IP stack
-   * entirely. */
+   * and carries an address -- the same technique Zephyr's own
+   * tests/net/conn_mgr_nsos uses (see coap_tcp_init's connection_manager.c
+   * for the fuller writeup). Never used for real routing: NSOS offloaded
+   * sockets bypass Zephyr's IP stack entirely. */
   struct net_if* iface = net_if_get_default();
   struct in_addr dummy_addr;
 

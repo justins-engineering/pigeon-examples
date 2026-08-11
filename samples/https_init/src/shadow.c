@@ -81,9 +81,9 @@ static void set_all_log_levels(uint32_t level) {
 /* Reports uptime and this boot's poll count via the device telemetry path:
  * pigeon_telemetry_set() per key, then ONE pigeon_telemetry_flush() -- both
  * keys ride a single POST to <endpoint>/telemetry (dovecote's
- * report_telemetry_device upserts every key in the body), instead of the
- * one-POST-per-key the old single-slot set+flush API forced. Unrelated to
- * shadow config ack (see pigeon_shadow_report() below). poll_count
+ * report_telemetry_device upserts every key in the body) rather than one
+ * POST per key. Unrelated to shadow config ack (see pigeon_shadow_report()
+ * below). poll_count
  * restarting from 1 doubles as a cheap reboot indicator on the dashboard. */
 static void report_telemetry(void) {
   static unsigned int poll_count;
@@ -223,8 +223,7 @@ int shadow_sync(void) {
 #endif
 
   /* Confirm what was actually applied back to the platform (see pigeon's
-   * CLAUDE.md: dovecote's report_shadow_device now exists for this, closing
-   * the loop that used to be documented as a gap). current_version is the
+   * CLAUDE.md on dovecote's report_shadow_device). current_version is the
    * target_version we just applied, not re-derived from it server-side, so
    * this must be sent even if the device is already catching up to a newer
    * target by the time it lands. */
@@ -253,13 +252,13 @@ int shadow_sync(void) {
    * above -- otherwise it would never be seen as "changed" again and the
    * device would reboot on every single poll once set true.
    *
-   * Both reboot triggers below power the modem off gracefully first
+   * Both reboot triggers below -- this one and the FOTA-applied reboot
+   * further down -- power the modem off gracefully first
    * (lte_disconnect() -> lte_lc_power_off()) instead of calling sys_reboot()
    * directly: an ungraceful reset trips the nRF91 modem's reset-loop
    * protection and refuses LTE attach for 30 minutes (see this repo's
-   * CLAUDE.md "Modem reset safety" and connection_manager.c). This used to
-   * only be true for a would-be FOTA apply path; the existing "reboot": true
-   * command below had the same bug and is fixed here too. */
+   * CLAUDE.md "Modem reset safety" and connection_manager.c). Skipping the
+   * graceful power-off on either path reintroduces that reset-loop risk. */
   if (target.reboot) {
     LOG_WRN("Shadow v%d requested reboot; disconnecting and rebooting now", doc.target_version);
     lte_disconnect();

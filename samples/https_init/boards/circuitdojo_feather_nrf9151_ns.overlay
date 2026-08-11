@@ -1,12 +1,11 @@
 /* nRF9151 Feather counterpart to circuitdojo_feather_nrf9160_ns.overlay (see
  * that file's comments for the general rationale of each block). Two things
- * this board does NOT need, unlike the 9160 overlay, verified against this
- * board's own out-of-tree definition (../../boards/circuitdojo/feather_nrf9151/,
- * task #13) before being dropped rather than blindly copied:
+ * this board does NOT need, unlike the 9160 overlay, based on this board's
+ * own out-of-tree definition (../../boards/circuitdojo/feather_nrf9151/)
+ * rather than blindly copied:
  *
  * - No `&i2c1 { status = "disabled"; }`: i2c1 and uart1 share the same
- *   peripheral instance (reg 0x9000, confirmed via this board's own merged
- *   zephyr.dts from the phase-1 smoke build) same as on the 9160, but i2c1
+ *   peripheral instance (reg 0x9000) same as on the 9160, but i2c1
  *   already defaults to "disabled" at the SoC devicetree level here and
  *   nothing in this board's common.dtsi turns it on (only i2c2 is enabled,
  *   for the onboard PMIC/accel/etc.) -- so there's no live conflict to
@@ -42,9 +41,8 @@
 /* Secure/nonsecure rebalance within slot0/slot1, same motivation and same
  * split as the 9160 overlay: this board's stock default (from its own
  * circuitdojo_feather_nrf9151_common.dtsi, 256 KB secure / 192 KB nonsecure)
- * overflows the nonsecure app image -- confirmed by an actual failing build
- * before adding this (FLASH region overflowed by 87758 bytes at the stock
- * split), not assumed up front. Total slot size (448 KB) is unchanged. */
+ * overflows the nonsecure app image by 87758 bytes at the stock split.
+ * Total slot size (448 KB) is unchanged. */
 /delete-node/ &slot0_s_partition;
 /delete-node/ &slot0_ns_partition;
 

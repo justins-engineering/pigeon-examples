@@ -1,5 +1,5 @@
-# PRIMARY west manifest for this workspace (task #8, 2026-07-22): plain
-# upstream Zephyr, no nRF Connect SDK. Every sample except the nRF91
+# PRIMARY west manifest for this workspace: plain upstream Zephyr, no nRF
+# Connect SDK. Every sample except the nRF91
 # cellular ones (https_init, coap_tcp_init -- see west.yml) builds against
 # this manifest: ESP32-C6 (wifi_init/ws_init), native_sim (shadow_model),
 # and any future non-cellular board this workspace grows.

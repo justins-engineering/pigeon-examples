@@ -1,5 +1,5 @@
-# SECONDARY manifest as of task #8 (2026-07-22): this workspace's default
-# is now west-vanilla.yml (plain upstream Zephyr, see that file and this
+# SECONDARY manifest: this workspace's default
+# is west-vanilla.yml (plain upstream Zephyr, see that file and this
 # repo's README/CLAUDE.md). Reconfigure a topdir against this manifest
 # instead only for the nRF91 cellular samples (https_init, coap_tcp_init),
 # whose LTE connectivity genuinely needs the nRF Connect SDK's vendor
@@ -40,13 +40,12 @@ manifest:
           - zcbor
           - zephyr
 
-  # hal_espressif (Espressif's Zephyr HAL) used to be added here for the
-  # ESP32-C6 samples -- removed as part of task #8's split, since
-  # wifi_init/ws_init now build exclusively under west-vanilla.yml (which
-  # gets hal_espressif for free via upstream zephyr's own manifest import),
-  # and neither of this manifest's remaining samples (https_init,
-  # coap_tcp_init, both nRF91-only) touch ESP32 at all. This manifest is
-  # nRF Connect SDK/cellular-only now -- see the file-level comment above.
+  # hal_espressif (Espressif's Zephyr HAL) isn't needed here: wifi_init/
+  # ws_init build exclusively under west-vanilla.yml (which gets
+  # hal_espressif for free via upstream zephyr's own manifest import), and
+  # neither of this manifest's remaining samples (https_init, coap_tcp_init,
+  # both nRF91-only) touch ESP32 at all. This manifest is nRF Connect
+  # SDK/cellular-only now -- see the file-level comment above.
 
   # pigeon is intentionally not a west project: ./pigeon is a local symlink
   # (see ../pigeon_module.cmake, which adds it to ZEPHYR_EXTRA_MODULES by

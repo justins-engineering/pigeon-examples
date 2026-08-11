@@ -1,8 +1,6 @@
 /* nRF9151 Feather counterpart to circuitdojo_feather_nrf9160.overlay
  * (mcuboot's own board file). Same structure, adjusted for this board's
- * actual console baud (115200, not the 9160's 1000000 -- verified against
- * this board's pinctrl-level devicetree and confirmed live on real hardware
- * during phase 1, task #13).
+ * actual console baud (115200, not the 9160's 1000000).
  *
  * No hw-flow-control: this board's uart0_default pinctrl only routes TX/RX
  * (see ../../../boards/circuitdojo/feather_nrf9151/circuitdojo_feather_nrf9151_common-pinctrl.dtsi),

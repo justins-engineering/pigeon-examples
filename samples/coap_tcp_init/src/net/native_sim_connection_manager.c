@@ -79,11 +79,10 @@ int lte_connect(void) {
   /* The NSOS connectivity-sim interface never runs DHCP and has no L2 of
    * its own to assign an address, but conn_mgr's L4 state machine only
    * fires NET_EVENT_L4_CONNECTED once the interface is BOTH "connected"
-   * and carries an address (confirmed against Zephyr's own
-   * tests/net/conn_mgr_nsos -- see coap_tcp_init's connection_manager.c,
-   * where this dummy-address pattern originates in this repo). Never used
-   * for real routing: NSOS offloaded sockets bypass Zephyr's IP stack
-   * entirely. */
+   * and carries an address -- the same technique Zephyr's own
+   * tests/net/conn_mgr_nsos uses (see this sample's connection_manager.c
+   * for the fuller writeup). Never used for real routing: NSOS offloaded
+   * sockets bypass Zephyr's IP stack entirely. */
   struct net_if* iface = net_if_get_default();
   struct in_addr dummy_addr;
 

@@ -112,13 +112,13 @@ int wifi_connect(void) {
   /* The NSOS connectivity-sim interface never runs DHCP and has no L2 of
    * its own to assign an address, but conn_mgr's L4 state machine only
    * fires NET_EVENT_L4_CONNECTED once the interface is both "connected"
-   * and carries an address (confirmed against Zephyr's own
-   * tests/net/conn_mgr_nsos, which does exactly this before triggering its
-   * own connect). Without it wifi_connect() below hangs until
-   * NATIVE_SIM_CONNECT_TIMEOUT even though NSOS's own socket layer comes up
-   * fine. Never used for real routing -- NSOS offloaded sockets bypass
-   * Zephyr's IP stack entirely -- this exists purely to satisfy conn_mgr's
-   * gating check, same fix as coap_tcp_init/connection_manager.c. */
+   * and carries an address -- the same technique Zephyr's own
+   * tests/net/conn_mgr_nsos uses before triggering its own connect.
+   * Without it wifi_connect() below hangs until NATIVE_SIM_CONNECT_TIMEOUT
+   * even though NSOS's own socket layer comes up fine. Never used for real
+   * routing -- NSOS offloaded sockets bypass Zephyr's IP stack entirely --
+   * this exists purely to satisfy conn_mgr's gating check, same technique
+   * coap_tcp_init/connection_manager.c uses. */
   struct net_if *iface = net_if_get_default();
   struct in_addr dummy_addr;
 

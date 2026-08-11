@@ -8,9 +8,10 @@
  * so it's a single plain image rather than a dual-slot MCUboot build --
  * but it still links against slot0_ns_partition by default, and the
  * stock 192 KB nonsecure split isn't enough headroom for
- * HTTPS+TLS+cellular+GNSS with any reasonable log verbosity (confirmed by
- * an actual failing link before adding this overlay -- "region FLASH
- * overflowed", not assumed up front). slot1 is left untouched at its
+ * HTTPS+TLS+cellular+GNSS with any reasonable log verbosity -- without
+ * this rebalance the link fails with "region FLASH overflowed" rather
+ * than at compile time, so the shortfall isn't obvious up front. slot1
+ * is left untouched at its
  * stock size/location -- unlike https_init this sample never uses it (no
  * FOTA), but leaving it alone keeps this overlay a minimal, obviously-
  * correct rebalance of the one partition that actually matters here,

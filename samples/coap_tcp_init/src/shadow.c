@@ -147,8 +147,7 @@ int shadow_sync(void) {
   );
 
   /* Confirm what was actually applied back to the platform (see pigeon's
-   * CLAUDE.md: dovecote's report_shadow_device now exists for this, closing
-   * the loop that used to be documented as a gap). current_version is the
+   * CLAUDE.md on dovecote's report_shadow_device). current_version is the
    * target_version we just applied, not re-derived from it server-side, so
    * this must be sent even if the device is already catching up to a newer
    * target by the time it lands. */
@@ -180,8 +179,8 @@ int shadow_sync(void) {
    * Power the modem off gracefully first (lte_disconnect() -> CFUN=0, see
    * net/connection_manager.c) instead of calling sys_reboot() directly: an
    * ungraceful reset trips the nRF91 modem's reset-loop protection and
-   * refuses LTE attach for 30 minutes. This mirrors the https_init sample,
-   * which fixed the same "reboot": true bug as part of task #20. */
+   * refuses LTE attach for 30 minutes. Same pattern the https_init sample
+   * uses for its "reboot": true handling. */
   if (target.reboot) {
     LOG_WRN("Shadow v%d requested reboot; disconnecting and rebooting now", doc.target_version);
     lte_disconnect();

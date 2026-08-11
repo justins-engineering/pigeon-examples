@@ -23,9 +23,9 @@ extern struct k_heap _system_heap;
  * vendors (zephyr/blobs/lib/esp32c6/libnet80211.a -- no source in this tree,
  * so it can't respect that Kconfig choice) calls plain malloc()/free() directly
  * for its own timer/beacon/probe housekeeping, which can only ever come from
- * THIS arena. A real-hardware crash traced to exactly that path (task #15,
- * see this sample's README/CLAUDE.md writeup) is why this second heap is
- * tracked here too, not just _system_heap -- malloc_runtime_stats_get() is
+ * THIS arena. A crash on real hardware traced to exactly that path (see this
+ * sample's README/CLAUDE.md writeup) is why this second heap is tracked here
+ * too, not just _system_heap -- malloc_runtime_stats_get() is
  * this file's own public wrapper around sys_heap_runtime_stats_get() for its
  * otherwise-static z_malloc_heap, gated on the same CONFIG_SYS_HEAP_RUNTIME_
  * STATS already enabled for _system_heap, but (like _system_heap) not declared
@@ -51,8 +51,8 @@ static void heap_monitor_handler(struct k_work *work) {
     LOG_ERR("sys_heap_runtime_stats_get failed: %d", err);
   } else {
     /* uptime alongside every sample so a serial-log grep can plot free
-     * bytes against time without relying on a wall-clock timestamp --
-     * task #15 wants exactly this trend over a long soak. */
+     * bytes against time without relying on a wall-clock timestamp -- a
+     * long soak needs exactly this trend. */
     LOG_INF("heap_stats uptime_s=%u free=%zu allocated=%zu max_allocated=%zu",
             uptime_s, stats.free_bytes, stats.allocated_bytes, stats.max_allocated_bytes);
   }
