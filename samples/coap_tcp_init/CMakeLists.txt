@@ -18,5 +18,17 @@ project(coap_tcp_init)
 target_sources(app PRIVATE
   src/main.c
   src/shadow.c
-  src/net/connection_manager.c
 )
+
+# native_sim has no modem (and, in this workspace's default vanilla-Zephyr
+# manifest, no NCS modem/lte_lc.h to even compile against) -- swap in a
+# generic conn_mgr-over-NSOS connection manager instead, the same
+# board-conditional-source pattern coap_dtls_init/wifi_init/ws_init use (see
+# src/net/native_sim_connection_manager.c's own header comment). Both files
+# export the same lte_connect()/lte_disconnect() names, so main.c/shadow.c
+# need no board-specific code of their own.
+if(CONFIG_BOARD_NATIVE_SIM)
+  target_sources(app PRIVATE src/net/native_sim_connection_manager.c)
+else()
+  target_sources(app PRIVATE src/net/connection_manager.c)
+endif()
