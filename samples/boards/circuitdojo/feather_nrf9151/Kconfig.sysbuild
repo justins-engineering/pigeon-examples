@@ -2,4 +2,5 @@
 # SPDX-License-Identifier: Apache-2.0
 
 config PARTITION_MANAGER
+	bool
 	default n
