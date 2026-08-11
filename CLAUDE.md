@@ -202,10 +202,11 @@ work around or skip it when scripting flashes/tests.
   it after applying `target_config`, same as `https_init`'s. `src/net/connection_manager.c` is the same LTE
   bring-up/graceful-shutdown pattern, minus CA-cert provisioning since PSK credentials are registered
   by `pigeon_coap.c` itself from `pigeon_init()`'s config). `PIGEON_CONNECTOR_COAP`, speaking
-  CoAP-over-TLS/TCP (`coaps+tcp://`). No sysbuild/MCUboot, so unlike `https_init` it builds for both
-  `native_sim` and `circuitdojo_feather/nrf9160/ns` (verified 2026-07-15; hardware build needed
-  `CONFIG_SIZE_OPTIMIZATIONS` instead of `CONFIG_DEBUG_OPTIMIZATIONS` to fit the default,
-  non-rebalanced 192 KB nonsecure flash partition — see `prj.conf`'s comment).
+  CoAP-over-TLS/TCP (`coaps+tcp://`). Boots under MCUboot/sysbuild on `circuitdojo_feather/nrf9160/ns`
+  (`Kconfig.sysbuild`, board-conditioned so a blank/mass-erased chip has something to boot into) while
+  still building for `native_sim` too, which stays on the global `BOOTLOADER_NONE` default and needs no
+  extra flag (verified 2026-07-15; hardware build needed `CONFIG_SIZE_OPTIMIZATIONS` instead of
+  `CONFIG_DEBUG_OPTIMIZATIONS` to fit the MCUboot slot0 partition — see `prj.conf`'s comment).
   Wire-compatible with `~/pidgeiot` since 2026-07-15 (backend switched to `coaps+tcp://` — see
   `~/pigeon/CLAUDE.md`). **Known gap, still open:** `pigeon_coap.c`'s PSK registration always calls `tls_credential_add()`, with
   no `CONFIG_MODEM_KEY_MGMT` branch — on real nRF91 hardware, TLS sockets are offloaded to the modem
@@ -450,8 +451,10 @@ west update
 source .venv/bin/activate   # or let direnv's .envrc do it
 ```
 
-`coap_tcp_init` and `shadow_model` have no bootloader and build for `native_sim` for fast local
-compile checks:
+`shadow_model` has no bootloader and builds for `native_sim` for fast local compile checks
+(`coap_dtls_init`'s and `coap_tcp_init`'s own `native_sim` flavors, and `coap_dtls_init`'s ESP32-C6
+flavor, stay bootloader-free the same way — see "Other samples" above for why their nRF9160 flavor
+differs):
 
 ```sh
 west build -d build samples/shadow_model -b native_sim/native/64

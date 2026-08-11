@@ -43,8 +43,9 @@ samples/
                            # CONFIG_PIGEON_FOTA -- nRF9160 only, west.yml (NCS)
   coap_tcp_init/          # pigeon_init() with a CoAP-over-TLS/TCP connector
                            # (TLS PSK fields; no on-device UDP support yet);
-                           # same shadow-sync loop as https_init, no bootloader
-                           # -- nRF9160 only, west.yml (NCS)
+                           # same shadow-sync loop as https_init, boots under
+                           # MCUboot/sysbuild on nRF9160 (no CONFIG_PIGEON_FOTA
+                           # though) -- nRF9160 only, west.yml (NCS)
   shadow_model/           # builds pigeon_shadow_doc / pigeon_shadow_update_request
                            # structs and logs them (no transport yet) --
                            # west-vanilla.yml
@@ -172,10 +173,13 @@ software mbedTLS/PSA stack this sample never needed before -- see that
 file's comments, and `wifi_init`'s prj.conf for where those exact fixes
 were first found and verified against this same backend.
 
-`coap_tcp_init` also builds for that same board target (no sysbuild/MCUboot
-involved, so it isn't subject to the `native_sim` restriction above; its LTE
-bring-up skips the graceful-modem-shutdown path on `native_sim` too, for the
-same no-real-modem reason):
+`coap_tcp_init` also builds for that same board target. Its `Kconfig.sysbuild`
+opts nRF91 into MCUboot/sysbuild the same way `https_init`'s `sysbuild.conf`
+does -- a blank/mass-erased chip has nothing at address 0 to boot otherwise
+-- but leaves `native_sim` on the global `BOOTLOADER_NONE` default, so this
+build isn't subject to the `native_sim` restriction above without any extra
+flag; its LTE bring-up skips the graceful-modem-shutdown path on `native_sim`
+too, for the same no-real-modem reason):
 
 ```sh
 source .venv/bin/activate

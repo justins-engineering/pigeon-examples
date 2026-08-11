@@ -1,0 +1,21 @@
+# circuitdojo_feather (nRF9160) carries no board-level BOOTLOADER default of
+# its own and would otherwise land on the global BOOTLOADER_NONE default:
+# the app image gets linked straight into the SoC's default flash
+# partition, which only boots because a real chip normally still has
+# whatever bootloader was there before. A blank/mass-erased chip has
+# nothing at address 0 and hard-faults immediately. Opt in explicitly here,
+# matching https_init. native_sim keeps the global BOOTLOADER_NONE default
+# unchanged -- MCUboot's crypto build hard-asserts on that SoC.
+choice BOOTLOADER
+	default BOOTLOADER_MCUBOOT if SOC_SERIES_NRF91
+endchoice
+
+if BOOTLOADER_MCUBOOT
+
+choice BOOT_SIGNATURE_TYPE
+	default BOOT_SIGNATURE_TYPE_ECDSA_P256
+endchoice
+
+endif
+
+source "share/sysbuild/Kconfig"
