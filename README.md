@@ -332,6 +332,17 @@ back converged; and the device reconnects after the broker is killed under
 it. Both modes were green on 2026-08-25 (session accepted as MQTT 3.1.1, one
 report per target version, reconnect inside a second).
 
+The device logs the suite each session negotiated, which is worth reading
+rather than assuming -- the broker lists its PSK suites first with server
+preference, and what mbedTLS offers comes from its PSA wants rather than any
+explicit list. PSK mode landed on **0x00A8**
+(`TLS_PSK_WITH_AES_128_CCM_8`), the constrained-device target, which the
+platform's own verification notes had recorded as unexercised because no two
+OpenSSL peers on that host could negotiate CCM8 between them at all --
+mbedTLS here is the real client for it. Certificate mode landed on
+**0xC02B** (`TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256`): all-ECDSA, as the
+ISRG Root X2 anchoring intends.
+
 The mock is a test fixture, not an authorization model: it records device
 tokens and checks they are present, never that they are valid -- the real
 platform verifies an Ed25519 signature per request, which is the whole
