@@ -358,10 +358,21 @@ OpenSSL's default security level drops CCM8 at *selection* time while
 leaving it in the parsed list, so a broker whose cipher string carries no
 `@SECLEVEL=0` will never choose it however it is ranked. `openssl ciphers`
 prints the suite identically either way, which is why a listing cannot
-answer the question. Whether the broker should lower that floor is a
-decision for the broker work -- it applies to more than this one suite --
-so the row stays open by choice rather than by limitation. Nothing on the
-device needs changing either way.
+answer the question.
+
+**Since resolved in the broker, and this device now lands on CCM8.** The
+lowered floor is scoped to hellos that actually offer the suite (a
+per-connection security level set from a ClientHello callback), so
+certificate handshakes keep the default floor. Re-running this driver
+against that broker, unchanged on the device side:
+
+    <inf> pigeon: MQTT TLS ciphersuite: 0xc0a8
+    <inf> pigeon: MQTT session up
+
+twice in one run, initial connect and post-restart reconnect. So the
+constrained-device suite is now exercised the whole way through: offered by
+a real mbedTLS client, selected by the broker, and read back on-device by
+code point. Nothing in this sample changed to get there.
 
 (One trap worth carrying: `s_server` exits the moment its stdin reaches EOF,
 which in any script looks precisely like a failed negotiation -- `ACCEPT`
@@ -376,12 +387,13 @@ For what it is worth, the same want-list already negotiated CCM8 for real in
 this workspace over DTLS, against libcoap's mbedTLS backend pinned to that
 suite -- see the CoAP section above.
 
-The device-side rule that falls out of this, for whoever writes the next PSK
-board conf: **keep `CONFIG_PSA_WANT_ALG_GCM` wanted alongside CCM.** A build
-offering CCM8 alone cannot connect to a broker whose OpenSSL cannot select
-it, and that is a silent handshake failure rather than a downgrade. Every
-PSK-capable conf here wants both today, which is why a server that cannot
-select CCM8 costs these builds nothing. The one profile that does not read
+The device-side rule that falls out of this still stands, for whoever writes
+the next PSK board conf: **keep `CONFIG_PSA_WANT_ALG_GCM` wanted alongside
+CCM.** Our own broker serves CCM8 now, but a build offering CCM8 alone
+cannot connect to any broker whose OpenSSL will not select it -- a silent
+handshake failure rather than a downgrade -- and that describes every
+default-configured OpenSSL listener, including ones we do not run. Every
+PSK-capable conf here wants both. The one profile that does not read
 its suite list from these symbols is the nRF91 modem, which supplies its own
 -- unmeasured here, and a bench item whenever that hardware is free.
 
