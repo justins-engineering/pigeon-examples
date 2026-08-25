@@ -276,6 +276,89 @@ which is why this sample's `main.c` calls `pigeon_init()` **before**
 build is compile-verified only (no CoAP terminator deployed to talk to over
 LTE, and no bench time on this task).
 
+## MQTT (`mqtt_init`) and the local broker e2e
+
+`mqtt_init` exercises `pigeon`'s MQTT connector
+(`CONFIG_PIGEON_CONNECTOR_MQTT`) against **pigeonhole**, PidgeIoT's MQTT
+broker (`~/pigeonhole`). The broker is a thin bridge: it terminates the MQTT
+session and turns every publish into an ordinary call on the platform's own
+`/device/pigeons/<id>/...` routes, carrying this pigeon's bearer token, and
+it holds the pigeon's device WebSocket as the session's authentication, its
+shadow feed and its QoS 0 telemetry path.
+
+What that changes for a device, versus the HTTPS and CoAP samples:
+
+- **The shadow is pushed, not polled.** `pigeon/shadow/target` is retained,
+  so `pigeon_shadow_get()` serves what the broker last published and a
+  dashboard write arrives unprompted. `src/shadow.c` keeps a periodic pass
+  anyway, as the tick that reports telemetry, and a push collapses the wait.
+- **Topics carry no pigeon id** -- the handshake already bound the session to
+  one pigeon -- which makes `pigeon_config.device_id` load-bearing here
+  (it is the CONNECT client id and username) rather than the readable
+  placeholder the other samples pass. It lives in the gitignored
+  `prj.local.conf` as `CONFIG_MQTT_INIT_PIGEON_ID`.
+- **Two authentication shapes, one per board conf**: `native_sim` runs
+  TLS-PSK (nothing to provision -- pigeon registers the identity and secret
+  itself), `esp32c6_devkitc` verifies the broker's Let's Encrypt chain
+  against ISRG Root X2 (`cert/isrg-root-x2.pem`) and sends
+  `CONFIG_PIGEON_TOKEN` as the CONNECT password. Either board can run either
+  mode: `overlay-cert-native-tls.conf` and `overlay-psk-native-tls.conf`
+  carry the other mode's mbedTLS want-list, and `-DPIGEON_MQTT_CA_FILE=...`
+  points a certificate build at a different trust anchor (a local broker's
+  development CA, say).
+
+### The end-to-end driver
+
+`scripts/test/native-sim-e2e.sh` runs the whole device-to-platform path on
+one workstation: it builds the broker from `~/pigeonhole`, issues its
+development certificate, starts `scripts/test/mock_dovecote.py` (a
+stdlib-only stand-in for the edge -- the three device routes, the device
+WebSocket with its snapshot-on-accept frame, and the internal PSK lookup),
+builds and runs `mqtt_init` on `native_sim`, and then asserts on what
+actually arrived at the platform rather than on what the device believes it
+sent:
+
+```sh
+scripts/test/native-sim-e2e.sh            # TLS-PSK, the native_sim default
+scripts/test/native-sim-e2e.sh --cert     # certificate mode, dev CA
+scripts/test/native-sim-e2e.sh --keep     # leave everything running
+```
+
+It checks, in order: the session authenticates and comes up; the retained
+target shadow arrives unasked and is applied; telemetry, a shadow report and
+a dictionary-log chunk each reach their own route with a bearer token on
+them; a config change pushed mid-session reaches the device and is reported
+back converged; and the device reconnects after the broker is killed under
+it. Both modes were green on 2026-08-25 (session accepted as MQTT 3.1.1, one
+report per target version, reconnect inside a second).
+
+The mock is a test fixture, not an authorization model: it records device
+tokens and checks they are present, never that they are valid -- the real
+platform verifies an Ed25519 signature per request, which is the whole
+reason the broker is not a trusted proxy. Never point it at real device
+credentials.
+
+**Known broker-side gap found by this sample** (reported to the pigeonhole
+work, not fixed here): the broker offers no TLS **1.2** certificate
+ciphersuites -- its `set_cipher_list("<psk suites>:DEFAULT")` expands to the
+PSK suites alone, because OpenSSL does not treat `DEFAULT` as a set to union
+in when it appears after other entries. A TLS-1.2-only client in certificate
+mode therefore gets `handshake_failure`, which is exactly what Zephyr's
+mbedTLS client is (`IPPROTO_TLS_1_2`). Certificate mode above was verified
+against a locally patched broker; PSK mode needs no patch.
+
+### ESP32-C6
+
+Build-verified only so far, both modes (`60.2%` SRAM, `6.4-6.6%` flash);
+no hardware run yet -- the bench C6 is queued behind loft's CoAP regression
+pass.
+
+```sh
+west build -d build_mqtt_init samples/mqtt_init -b esp32c6_devkitc/esp32c6/hpcore
+west build -d build_mqtt_psk  samples/mqtt_init -b esp32c6_devkitc/esp32c6/hpcore \
+  -- -DEXTRA_CONF_FILE=$PWD/samples/mqtt_init/overlay-psk-native-tls.conf
+```
+
 ## Flashing `https_init` to real hardware
 
 This is the only sample that boots on and has been verified against a real

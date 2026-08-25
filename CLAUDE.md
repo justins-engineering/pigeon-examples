@@ -62,6 +62,13 @@ pigeon-examples/            <- west topdir; this repo's git history covers sampl
     ws_init/                      # same board/HTTPS connector as wifi_init, plus CONFIG_PIGEON_WS: the
                                   # dedicated demo of pigeon's persistent WS push channel, split out of
                                   # wifi_init so WS isn't conflated with the plain-HTTPS-over-WiFi sample
+    mqtt_init/                    # pigeon_init() over MQTT/TLS to the pigeonhole broker (~/pigeonhole):
+                                  # native_sim in TLS-PSK, esp32c6 in certificate mode, both under the
+                                  # DEFAULT vanilla manifest. The retained shadow replaces the poll --
+                                  # see the README's MQTT section and scripts/test/ below
+  scripts/test/                # native-sim-e2e.sh + mock_dovecote.py: the whole device-to-platform MQTT
+                                # path on one workstation (real broker, mocked edge), asserting on what
+                                # arrived rather than on what the device believes it sent
   nrf/, zephyr/, bootloader/, nrfxlib/, modules/   # vendored by `west update`, gitignored, not this repo
 ```
 
@@ -260,6 +267,24 @@ work around or skip it when scripting flashes/tests.
   "Debug-tooling lesson learned the hard way" subsection before doing further real-hardware debugging
   on this or any other cellular sample: rapid-cycling `nrfjprog`/probe connections against a live
   target produces phantom stalls and corrupted reads that look exactly like firmware bugs.
+- **`mqtt_init`** (added 2026-08-25) -- `pigeon`'s MQTT connector against **pigeonhole**, the
+  platform's MQTT broker (`~/pigeonhole`, whose `docs/design.md` is the authority for the topic
+  map and the auth model). Two board flavors on `coap_dtls_init`'s board-conditional pattern:
+  `native_sim/native/64` in TLS-PSK against a broker on this workstation, and
+  `esp32c6_devkitc/esp32c6/hpcore` in certificate mode over WiFi, verifying an all-ECDSA chain
+  against ISRG Root X2 (`cert/isrg-root-x2.pem`, so no RSA anywhere in that build).
+  `overlay-cert-native-tls.conf`/`overlay-psk-native-tls.conf` let either board run the other
+  mode; `-DPIGEON_MQTT_CA_FILE=` repoints a certificate build at a different trust anchor.
+  Structurally like the other samples except in what the shadow costs: the target arrives as a
+  RETAINED publish and `pigeon_shadow_get()` serves it locally, so `shadow_loop()`'s periodic
+  pass is the telemetry tick and a dashboard write collapses the wait via
+  `PIGEON_EVENT_SHADOW_UPDATE`. `CONFIG_MQTT_INIT_PIGEON_ID` is a real credential-shaped value
+  (the CONNECT client id and username, and the PSK identity), so it belongs in
+  `prj.local.conf` with the endpoint and secret. **`scripts/test/native-sim-e2e.sh` is the
+  verification of record** -- both auth modes green 2026-08-25 -- and it found a broker-side
+  defect the broker's own tests could not (no TLS 1.2 certificate ciphersuites; see the
+  README). ESP32-C6 is build-verified only; the bench board is queued behind loft's CoAP
+  regression pass.
 - **`wifi_init` / `ws_init`** (added 2026-07-19, task #27; `CONFIG_PIGEON_WS` landed and
   hardware-verified 2026-07-20, task #33; split into two samples 2026-07-21, task #37) —
   ESP32-C6-DevKitC-1 board bring-up. Originally one sample (`wifi_init`) that grew `CONFIG_PIGEON_WS`
