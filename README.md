@@ -357,6 +357,15 @@ For what it is worth, the same want-list already negotiated CCM8 for real in
 this workspace over DTLS, against libcoap's mbedTLS backend pinned to that
 suite -- see the CoAP section above.
 
+The device-side rule that falls out of this, for whoever writes the next PSK
+board conf: **keep `CONFIG_PSA_WANT_ALG_GCM` wanted alongside CCM.** A build
+offering CCM8 alone cannot connect to a broker whose OpenSSL cannot select
+it, and that is a silent handshake failure rather than a downgrade. Every
+PSK-capable conf here wants both today, which is why a server that cannot
+select CCM8 costs these builds nothing. The one profile that does not read
+its suite list from these symbols is the nRF91 modem, which supplies its own
+-- unmeasured here, and a bench item whenever that hardware is free.
+
 The mock is a test fixture, not an authorization model: it records device
 tokens and checks they are present, never that they are valid -- the real
 platform verifies an Ed25519 signature per request, which is the whole
