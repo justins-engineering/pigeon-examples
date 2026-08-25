@@ -281,9 +281,12 @@ work around or skip it when scripting flashes/tests.
   `PIGEON_EVENT_SHADOW_UPDATE`. `CONFIG_MQTT_INIT_PIGEON_ID` is a real credential-shaped value
   (the CONNECT client id and username, and the PSK identity), so it belongs in
   `prj.local.conf` with the endpoint and secret. **`scripts/test/native-sim-e2e.sh` is the
-  verification of record** -- both auth modes green 2026-08-25 -- and it found a broker-side
-  defect the broker's own tests could not (no TLS 1.2 certificate ciphersuites; see the
-  README). ESP32-C6 is build-verified only; the bench board is queued behind loft's CoAP
+  verification of record** -- both auth modes green 2026-08-25 against the broker's own tree --
+  and it found a broker-side defect the broker's own tests could not (no TLS 1.2 certificate
+  ciphersuites, since every check that passed had let OpenSSL choose 1.3; fixed in pigeonhole,
+  see the README). It also settled an open question there by reading the negotiated suite off
+  the device: mbedTLS and the broker do agree on `TLS_PSK_WITH_AES_128_CCM_8`, which two
+  OpenSSL peers on this host cannot negotiate between them at all. ESP32-C6 is build-verified only; the bench board is queued behind loft's CoAP
   regression pass.
 - **`wifi_init` / `ws_init`** (added 2026-07-19, task #27; `CONFIG_PIGEON_WS` landed and
   hardware-verified 2026-07-20, task #33; split into two samples 2026-07-21, task #37) —

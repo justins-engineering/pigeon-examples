@@ -349,14 +349,18 @@ platform verifies an Ed25519 signature per request, which is the whole
 reason the broker is not a trusted proxy. Never point it at real device
 credentials.
 
-**Known broker-side gap found by this sample** (reported to the pigeonhole
-work, not fixed here): the broker offers no TLS **1.2** certificate
-ciphersuites -- its `set_cipher_list("<psk suites>:DEFAULT")` expands to the
-PSK suites alone, because OpenSSL does not treat `DEFAULT` as a set to union
-in when it appears after other entries. A TLS-1.2-only client in certificate
-mode therefore gets `handshake_failure`, which is exactly what Zephyr's
-mbedTLS client is (`IPPROTO_TLS_1_2`). Certificate mode above was verified
-against a locally patched broker; PSK mode needs no patch.
+**A broker-side defect this sample found**, since it is the kind of thing
+worth knowing how it surfaced: the broker offered no TLS **1.2** certificate
+ciphersuites at all. Its `set_cipher_list("<psk suites>:DEFAULT")` expanded
+to the PSK suites alone, because OpenSSL does not treat `DEFAULT` as a set to
+union in when it appears after other entries -- so a TLS-1.2-only client in
+certificate mode got `handshake_failure`, and Zephyr's mbedTLS client is
+exactly that (`IPPROTO_TLS_1_2`). Nothing on the device side was wrong, and
+no broker test caught it because the checks that passed had let OpenSSL
+choose TLS 1.3, where the ciphersuites come from a different setter. Fixed
+in pigeonhole (an explicit cert-suite list, PSK still ahead of it, plus a
+regression test that drives a version-capped client through a real publish);
+certificate mode above is verified against that fixed broker.
 
 ### ESP32-C6
 
