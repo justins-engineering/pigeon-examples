@@ -335,13 +335,27 @@ report per target version, reconnect inside a second).
 The device logs the suite each session negotiated, which is worth reading
 rather than assuming -- the broker lists its PSK suites first with server
 preference, and what mbedTLS offers comes from its PSA wants rather than any
-explicit list. PSK mode landed on **0x00A8**
-(`TLS_PSK_WITH_AES_128_CCM_8`), the constrained-device target, which the
-platform's own verification notes had recorded as unexercised because no two
-OpenSSL peers on that host could negotiate CCM8 between them at all --
-mbedTLS here is the real client for it. Certificate mode landed on
-**0xC02B** (`TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256`): all-ECDSA, as the
-ISRG Root X2 anchoring intends.
+explicit list. PSK mode lands on **0x00A8**
+(`TLS_PSK_WITH_AES_128_GCM_SHA256`); certificate mode on **0xC02B**
+(`TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256`), all-ECDSA as the ISRG Root X2
+anchoring intends.
+
+**On `TLS_PSK_WITH_AES_128_CCM_8` (0xC0A8)**, the constrained-device target
+the platform's verification notes record as unexercised: this device offers
+it. Read back through `getsockopt(TLS_CIPHERSUITE_LIST)`, the PSK build's
+ClientHello carries six suites -- `0xC0A5`, `0xC0A9`, `0x00A8`, `0xC0A4`,
+`0x00AE` and `0xC0A8` -- so CCM and CCM8 are both in the offer, from the PSA
+wants alone with no ciphersuite pin. The broker still selects `0x00A8`,
+even though CCM8 is first in its list and it sets server preference, which
+matches its own finding that this OpenSSL build cannot negotiate any CCM8
+suite between two OpenSSL peers either. So the gap is on the server side,
+not here, and the row stays open until a server that can select CCM8 is on
+the other end. Do not read `0x00A8` as CCM8: the code points differ by one
+byte in the prefix and the names are easy to transpose.
+
+For what it is worth, the same want-list already negotiated CCM8 for real in
+this workspace over DTLS, against libcoap's mbedTLS backend pinned to that
+suite -- see the CoAP section above.
 
 The mock is a test fixture, not an authorization model: it records device
 tokens and checks they are present, never that they are valid -- the real
