@@ -284,13 +284,15 @@ work around or skip it when scripting flashes/tests.
   verification of record** -- both auth modes green 2026-08-25 against the broker's own tree --
   and it found a broker-side defect the broker's own tests could not (no TLS 1.2 certificate
   ciphersuites, since every check that passed had let OpenSSL choose 1.3; fixed in pigeonhole,
-  see the README). On the platform's open
-  `TLS_PSK_WITH_AES_128_CCM_8` question it establishes the device half only: the PSK build's
-  ClientHello does carry `0xC0A8` (read back via `getsockopt(TLS_CIPHERSUITE_LIST)`), but the
-  broker still selects `0x00A8` GCM despite listing CCM8 first with server preference. Measured
-  cause (README has the probe table): OpenSSL's default security level drops CCM8 at selection
-  time while leaving it in the parsed list, so the broker's cipher string would need
-  `@SECLEVEL=0` to ever choose it -- a server-side decision, nothing to change on the device.
+  see the README). It also closed the platform's open
+  `TLS_PSK_WITH_AES_128_CCM_8` question, in two steps. First the device half: the PSK build's
+  ClientHello does carry `0xC0A8` (read back via `getsockopt(TLS_CIPHERSUITE_LIST)`) while the
+  broker still selected `0x00A8` GCM, and the measured cause (README has the probe table) was
+  OpenSSL's default security level dropping CCM8 at selection time while leaving it in the
+  parsed list. The broker then lowered that floor, scoped to hellos offering the suite, and this
+  sample now negotiates `0xC0A8` against it with nothing changed here -- so the
+  constrained-device suite is exercised end to end, offered by a real mbedTLS client and read
+  back on-device by code point.
   Two traps recorded there: `0x00A8` is GCM, not CCM8, one transposed byte from the wrong
   conclusion; and `openssl s_server` exits on stdin EOF, which in a script is indistinguishable
   from a failed handshake and is what made CCM8 look unnegotiable on this host. ESP32-C6 is build-verified only; the bench board is queued behind loft's CoAP
