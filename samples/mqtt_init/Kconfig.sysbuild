@@ -1,0 +1,10 @@
+# esp32c6_devkitc's own Kconfig.sysbuild defaults BOOTLOADER to MCUboot, but
+# this sample has no signing key or CONFIG_PIGEON_FOTA wired up for that
+# board -- there's no second slot to build against, so force it back off,
+# same as ws_init/wifi_init/coap_dtls_init. native_sim stays on the global
+# BOOTLOADER_NONE default and needs no entry of its own.
+choice BOOTLOADER
+	default BOOTLOADER_NONE if BOARD_ESP32C6_DEVKITC
+endchoice
+
+source "share/sysbuild/Kconfig"

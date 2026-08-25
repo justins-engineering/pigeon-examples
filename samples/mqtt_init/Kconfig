@@ -1,0 +1,18 @@
+config MQTT_INIT_PIGEON_ID
+  string "Pigeon id this device connects to the broker as"
+  default ""
+  help
+    The pigeon's own 64-character hex id, passed to pigeon_init() as
+    pigeon_config.device_id -- which on the MQTT connector is the CONNECT
+    client id and username, and (on a PSK build) the handshake identity as
+    well. The broker refuses anything else and refuses a session whose
+    three copies of it disagree, so this is a real credential-shaped value:
+    it belongs in the git-ignored prj.local.conf next to the endpoint and
+    the PSK secret, never in tracked source.
+
+    The empty default fails loudly at pigeon_mqtt_start() rather than
+    silently connecting as nobody.
+
+menu "Zephyr Kernel"
+source "Kconfig.zephyr"
+endmenu
