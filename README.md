@@ -346,12 +346,31 @@ it. Read back through `getsockopt(TLS_CIPHERSUITE_LIST)`, the PSK build's
 ClientHello carries six suites -- `0xC0A5`, `0xC0A9`, `0x00A8`, `0xC0A4`,
 `0x00AE` and `0xC0A8` -- so CCM and CCM8 are both in the offer, from the PSA
 wants alone with no ciphersuite pin. The broker still selects `0x00A8`,
-even though CCM8 is first in its list and it sets server preference, which
-matches its own finding that this OpenSSL build cannot negotiate any CCM8
-suite between two OpenSSL peers either. So the gap is on the server side,
-not here, and the row stays open until a server that can select CCM8 is on
-the other end. Do not read `0x00A8` as CCM8: the code points differ by one
-byte in the prefix and the names are easy to transpose.
+even though CCM8 is first in its list and it sets server preference -- and
+the reason turns out to be a server-side configuration one, measured here
+with `openssl s_server`/`s_client` on this host:
+
+    server 'PSK-AES128-CCM8'                  , client CCM8      -> no handshake
+    server '<broker PSK list, no seclevel>'   , client CCM8+GCM  -> GCM
+    server '<broker PSK list>:@SECLEVEL=0'    , client CCM8+GCM  -> CCM8
+
+OpenSSL's default security level drops CCM8 at *selection* time while
+leaving it in the parsed list, so a broker whose cipher string carries no
+`@SECLEVEL=0` will never choose it however it is ranked. `openssl ciphers`
+prints the suite identically either way, which is why a listing cannot
+answer the question. Whether the broker should lower that floor is a
+decision for the broker work -- it applies to more than this one suite --
+so the row stays open by choice rather than by limitation. Nothing on the
+device needs changing either way.
+
+(One trap worth carrying: `s_server` exits the moment its stdin reaches EOF,
+which in any script looks precisely like a failed negotiation -- `ACCEPT`
+then `DONE`, and `unexpected eof while reading` at the client. Hold stdin
+open, e.g. `sleep 12 | openssl s_server ...`, or measurements from it mean
+nothing. That artifact is what made CCM8 look unnegotiable on this host.)
+
+Do not read `0x00A8` as CCM8: the code points differ by one byte in the
+prefix and the names are easy to transpose.
 
 For what it is worth, the same want-list already negotiated CCM8 for real in
 this workspace over DTLS, against libcoap's mbedTLS backend pinned to that

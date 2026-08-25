@@ -287,10 +287,13 @@ work around or skip it when scripting flashes/tests.
   see the README). On the platform's open
   `TLS_PSK_WITH_AES_128_CCM_8` question it establishes the device half only: the PSK build's
   ClientHello does carry `0xC0A8` (read back via `getsockopt(TLS_CIPHERSUITE_LIST)`), but the
-  broker still selects `0x00A8` GCM despite listing CCM8 first with server preference, matching
-  its own finding that this OpenSSL cannot negotiate CCM8 at all. Server-side gap, row stays
-  open -- and `0x00A8` is GCM, not CCM8, which is one transposed byte away from the wrong
-  conclusion. ESP32-C6 is build-verified only; the bench board is queued behind loft's CoAP
+  broker still selects `0x00A8` GCM despite listing CCM8 first with server preference. Measured
+  cause (README has the probe table): OpenSSL's default security level drops CCM8 at selection
+  time while leaving it in the parsed list, so the broker's cipher string would need
+  `@SECLEVEL=0` to ever choose it -- a server-side decision, nothing to change on the device.
+  Two traps recorded there: `0x00A8` is GCM, not CCM8, one transposed byte from the wrong
+  conclusion; and `openssl s_server` exits on stdin EOF, which in a script is indistinguishable
+  from a failed handshake and is what made CCM8 look unnegotiable on this host. ESP32-C6 is build-verified only; the bench board is queued behind loft's CoAP
   regression pass.
 - **`wifi_init` / `ws_init`** (added 2026-07-19, task #27; `CONFIG_PIGEON_WS` landed and
   hardware-verified 2026-07-20, task #33; split into two samples 2026-07-21, task #37) —
