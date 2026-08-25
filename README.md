@@ -416,6 +416,27 @@ in pigeonhole (an explicit cert-suite list, PSK still ahead of it, plus a
 regression test that drives a version-capped client through a real publish);
 certificate mode above is verified against that fixed broker.
 
+### Batched telemetry is HTTPS-only, deliberately
+
+`CONFIG_PIGEON_TELEMETRY_BATCH` `depends on PIGEON_CONNECTOR_HTTPS`, so on an
+MQTT build the assignment is silently dropped and telemetry leaves as one
+flat report per flush -- which is the shape this connector is specified to
+send, so nothing is broken. Worth knowing rather than rediscovering: the
+symbol appearing in a conf file does not mean it took, and the tell is the
+log line (`Flushed N telemetry key(s) in one report` is the flat path;
+`N telemetry reading(s) in one batch` is the batched one).
+
+Extending it here is not a one-line dependency change, because of the QoS 0
+path specifically. The broker turns a QoS 0 publish into
+`{"type":"telemetry","metrics":<payload verbatim>}`, so a batched
+`{"reports":[...]}` body would arrive nested under `metrics` rather than
+beside `type`, which is not the shape the platform's batched frame takes.
+Closing that needs the broker to recognise the batched body and frame it as
+`reports` (its own notes already record that it does not send that frame
+today), or the device to force QoS 1 whenever batching is on and give up the
+frame path. Either is a decision spanning both sides, not a device-side
+tweak.
+
 ### ESP32-C6
 
 Build-verified only so far, both modes (`60.2%` SRAM, `6.4-6.6%` flash);
