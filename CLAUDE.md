@@ -317,8 +317,25 @@ work around or skip it when scripting flashes/tests.
   delivered in ~1s of a dashboard write, telemetry-over-WS in ~10ms (vs. ~10s over HTTPS), and a live
   socket-steal recovery (rival connection closes this device's socket with 4009, device reconnects
   and reclaims the slot in ~1s — see `~/pigeon/CLAUDE.md`'s `pigeon_ws_teardown()` writeup for the
-  context-leak bug this test caught). `wifi_init` in its post-split (WS-free) form is build-verified
-  only, same rigor as the rest of this port — no ESP32-C6 hardware has been run against it yet.
+  context-leak bug this test caught). `wifi_init` has since been run on the same board against
+  staging in its own right, and gained the firmware-update half it never had: `shadow.c` decodes the
+  shadow's `firmware` key, confirms the running image on a healthy sync, gates on the library's
+  per-target attempt budget, applies, and reboots into what it staged, all of it compiled in only
+  under `CONFIG_PIGEON_FOTA`. That build is opt-in through two tracked fragments,
+  `samples/wifi_init/fota.conf` (the FOTA symbols plus the settings/NVS backend resume and the
+  budget persist through) and `samples/wifi_init/sysbuild-mcuboot.conf` (one line, overriding
+  `sysbuild.conf`'s `SB_CONFIG_BOOTLOADER_NONE`), so the default build stays a bootloader-less
+  single image anyone can flash without a signing key. **MCUboot needed no port work at all** under
+  `west-vanilla.yml`: upstream Zephyr builds its own esp32c6 port and the board's default partition
+  table already carries `boot`/`slot0`/`slot1`/`storage`. Two build-config values in that fragment
+  are mitigations rather than fixes, and are labelled as such where they live: a sustained download
+  eventually fails a WiFi-adapter allocation and aborts inside Espressif's timer shim, so the
+  general heap is larger and the chunk size far bigger (about 25 connections per image instead of
+  400, which also matters because one TLS handshake on this SoC costs roughly nine seconds), with
+  `CONFIG_PIGEON_REBOOT_ON_FATAL` turning the remaining case from a halted board into one that
+  reboots and resumes. Separately, `CONFIG_NET_MAX_CONN` had to leave the tree default: the two
+  static DNS resolvers hold a slot each, so the telemetry POST after a shadow GET failed `-2` on
+  every poll until it was raised.
   `samples/west.yml`'s `hal_espressif` revision was corrected to
   `b7953b8019361d09e613f7011d2ccc41b984d087` (a prior pin referenced a commit that doesn't exist —
   sourced the fix from this workspace's own vendored `zephyr/west.yml`).

@@ -14,30 +14,54 @@
 
 LOG_MODULE_REGISTER(shadow);
 
-/* Same struct/decode pattern as https_init's shadow.c, minus the "firmware"
- * key: this sample has no MCUboot/sysbuild setup (see README), so
- * CONFIG_PIGEON_FOTA isn't enabled here and there's nowhere to apply a
- * firmware update to yet even if the shadow requested one. */
+/* Same struct/decode pattern as https_init's shadow.c. target_config is
+ * opaque JSON to the pigeon library, so what a key means is this app's
+ * decision, and "firmware" is no exception: struct pigeon_fota_info
+ * (pigeon.h) is just the decode target for that one key, the same way this
+ * struct is for log/telemetry_interval/reboot. Only the download and flash
+ * mechanics live in the library, because those need its HTTPS transport
+ * internals. The key is decoded only on a build that can act on it. */
 struct app_shadow_config {
   bool log;
   int telemetry_interval;
   bool reboot;
+#if defined(CONFIG_PIGEON_FOTA)
+  struct pigeon_fota_info firmware;
+#endif
 };
+
+#if defined(CONFIG_PIGEON_FOTA)
+static const struct json_obj_descr app_firmware_descr[] = {
+    JSON_OBJ_DESCR_PRIM(struct pigeon_fota_info, version, JSON_TOK_STRING_BUF),
+    JSON_OBJ_DESCR_PRIM(struct pigeon_fota_info, size, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(struct pigeon_fota_info, sha256, JSON_TOK_STRING_BUF),
+};
+#endif
 
 static const struct json_obj_descr app_shadow_config_descr[] = {
     JSON_OBJ_DESCR_PRIM(struct app_shadow_config, log, JSON_TOK_TRUE),
     JSON_OBJ_DESCR_PRIM(struct app_shadow_config, telemetry_interval, JSON_TOK_NUMBER),
     JSON_OBJ_DESCR_PRIM(struct app_shadow_config, reboot, JSON_TOK_TRUE),
+#if defined(CONFIG_PIGEON_FOTA)
+    JSON_OBJ_DESCR_OBJECT(struct app_shadow_config, firmware, app_firmware_descr),
+#endif
 };
 
 /* Compile-time defaults applied before the first shadow sync of this boot.
  * Not persisted across reboots (no NVS/settings backing yet), so every boot
  * re-applies (and logs) the full delta from these defaults to the platform's
- * current target. */
+ * current target. firmware.version defaults to this build's own compiled-in
+ * version rather than blank, so every report names the image actually
+ * running even on a boot where no update happened, and a boot into a freshly
+ * applied image starts back at "target == running" with no extra
+ * bookkeeping. */
 static struct app_shadow_config current_config = {
     .log = false,
     .telemetry_interval = 60,
     .reboot = false,
+#if defined(CONFIG_PIGEON_FOTA)
+    .firmware = {.version = CONFIG_PIGEON_FOTA_CURRENT_VERSION, .size = 0, .sha256 = ""},
+#endif
 };
 
 /* Sets every registered module's runtime filter level in one call, so the
@@ -94,6 +118,16 @@ int shadow_sync(void) {
       doc.current_version, doc.updated_at
   );
 
+#if defined(CONFIG_PIGEON_FOTA)
+  /* A successful shadow fetch (network, auth and JSON parse all worked) is
+   * this app's definition of a healthy boot. Run it on every sync rather
+   * than only the first: boot_is_img_confirmed() makes it a no-op once
+   * confirmed, and placing it before the convergence early-return below
+   * means a boot that lands already converged, the normal case right after
+   * a swap, still confirms instead of waiting for MCUboot to revert it. */
+  pigeon_fota_confirm_boot();
+#endif
+
   report_telemetry();
 
   if (doc.target_version == doc.current_version) {
@@ -103,7 +137,14 @@ int shadow_sync(void) {
 
   /* target_config is only valid until the next pigeon_shadow_get() call, and
    * json_obj_parse() modifies its input in place, so work on a local copy. */
+#if defined(CONFIG_PIGEON_FOTA)
+  /* A "firmware" object is by far the largest key this sample decodes, so
+   * the copy tracks the library's own cap on one shadow config rather than
+   * a size chosen for the three scalar keys alone. */
+  char config_buf[CONFIG_PIGEON_SHADOW_CONFIG_MAX];
+#else
   char config_buf[256];
+#endif
 
   strncpy(config_buf, doc.target_config, sizeof(config_buf) - 1);
   config_buf[sizeof(config_buf) - 1] = '\0';
@@ -147,11 +188,58 @@ int shadow_sync(void) {
       current_config.log ? "true" : "false", current_config.telemetry_interval
   );
 
+#if defined(CONFIG_PIGEON_FOTA)
+  /* pigeon_fota_update_available() compares the offered version against
+   * this build's own compiled-in one, not against current_config, so a
+   * target_config carrying no "firmware" key at all is correctly a no-op:
+   * target.firmware was seeded from current_config above and so already
+   * names the running image. */
+  bool firmware_applied = false;
+
+  if (!pigeon_fota_update_available(&target.firmware)) {
+    /* Running what is offered, so drop any budget still held against this
+     * target and let a later re-offer of the same version start full. */
+    pigeon_fota_attempts_clear();
+  } else if (!pigeon_fota_attempt_allowed(&target.firmware, doc.target_version)) {
+    LOG_ERR(
+        "FOTA: attempt budget spent for firmware %s at shadow v%d; not downloading again until "
+        "the shadow is written anew",
+        target.firmware.version, doc.target_version
+    );
+    target.firmware = current_config.firmware;
+  } else {
+    LOG_WRN(
+        "Shadow v%d requests firmware %s (currently running %s); starting FOTA download",
+        doc.target_version, target.firmware.version, CONFIG_PIGEON_FOTA_CURRENT_VERSION
+    );
+
+    int fota_err = pigeon_fota_apply(&target.firmware);
+
+    if (fota_err) {
+      LOG_ERR(
+          "FOTA apply failed: %d; leaving current image running, will retry next poll", fota_err
+      );
+      /* Report the version still actually running rather than the one that
+       * was asked for, so the report below cannot claim an image the device
+       * never booted. */
+      target.firmware = current_config.firmware;
+    } else {
+      LOG_WRN("FOTA: image staged; will reboot after reporting shadow convergence");
+      current_config.firmware = target.firmware;
+      firmware_applied = true;
+    }
+  }
+#endif
+
   /* Confirm what was actually applied back to the platform, same
    * report-before-reboot ordering as https_init's shadow.c: the shadow
    * must converge on the platform side before this device drops off the
    * network for the reboot below. */
+#if defined(CONFIG_PIGEON_FOTA)
+  char report_buf[256];
+#else
   char report_buf[128];
+#endif
   int encode_err = json_obj_encode_buf(
       app_shadow_config_descr, ARRAY_SIZE(app_shadow_config_descr), &current_config, report_buf,
       sizeof(report_buf)
@@ -183,6 +271,17 @@ int shadow_sync(void) {
     wifi_disconnect();
     sys_reboot(SYS_REBOOT_COLD);
   }
+
+#if defined(CONFIG_PIGEON_FOTA)
+  if (firmware_applied) {
+    LOG_WRN(
+        "FOTA: disconnecting and rebooting into newly staged firmware %s",
+        current_config.firmware.version
+    );
+    wifi_disconnect();
+    sys_reboot(SYS_REBOOT_COLD);
+  }
+#endif
 
   return 0;
 }

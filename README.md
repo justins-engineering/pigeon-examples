@@ -51,7 +51,9 @@ samples/
                            # west-vanilla.yml
   wifi_init/              # pigeon_init() with an HTTPS connector over WiFi
                            # (ESP32-C6-DevKitC-1), plain polling only -- no
-                           # CONFIG_PIGEON_WS; no bootloader/FOTA -- see
+                           # CONFIG_PIGEON_WS; no bootloader by default, with
+                           # MCUboot + CONFIG_PIGEON_FOTA opt-in via fota.conf
+                           # and sysbuild-mcuboot.conf -- see
                            # "ESP32-C6-DevKitC-1 port" below -- west-vanilla.yml
   ws_init/                # Same ESP32-C6-DevKitC-1 board/HTTPS connector as
                            # wifi_init, plus CONFIG_PIGEON_WS: the dedicated,
@@ -928,9 +930,15 @@ WiFi/mains-powered devices; constrained or cellular devices should keep
 polling HTTPS the way `https_init`/`coap_tcp_init` do, which is why neither
 of those samples nor `shadow_model` ever turns `CONFIG_PIGEON_WS` on.
 
-**Verification status differs between the two now.** `wifi_init` is
-**build-verified only** (`west build` exit 0) — no ESP32-C6-DevKitC-1 is
-attached to this host, so nothing in it has been flashed or run.
+**Verification status differs between the two now.** `wifi_init` has been
+run on a real ESP32-C6-DevKitC-1 against `dovecote-staging`: WiFi join,
+shadow fetch, telemetry, and a full `CONFIG_PIGEON_FOTA` campaign
+(chunked download, sha256 verify, MCUboot test-swap, reboot into the new
+image, convergence reported from it), plus download resume across a
+mid-transfer reset and a rate-limited chunk waited out on the server's own
+`Retry-After`. That run is also where this sample's `CONFIG_NET_MAX_CONN`
+value and the heap/chunk-size settings in `fota.conf` come from, and where
+the library's missing secondary-slot erase was found.
 `ws_init` carries this workspace's *actual* ESP32-C6 hardware history: it
 was `wifi_init` itself until the sample split below, and in that form was
 hardware-verified end to end against `dovecote-staging` (WS connect, a
@@ -984,6 +992,23 @@ west build -d build_wifi_init samples/wifi_init -b esp32c6_devkitc/esp32c6/hpcor
 west build -d build_ws_init samples/ws_init -b esp32c6_devkitc/esp32c6/hpcore
 ```
 
+`wifi_init` with firmware updates turned on is a different build: MCUboot
+underneath it, and `CONFIG_PIGEON_FOTA` plus its dependencies on top. Both
+halves are tracked in the sample directory and both paths below are
+resolved relative to it, not to the directory west runs in:
+
+```sh
+west build --sysbuild -d build_wifi_init_fota -b esp32c6_devkitc/esp32c6/hpcore \
+  samples/wifi_init -- \
+  -DEXTRA_CONF_FILE=fota.conf -DSB_EXTRA_CONF_FILE=sysbuild-mcuboot.conf
+```
+
+`CONFIG_PIGEON_FOTA_CURRENT_VERSION` in `fota.conf` ships as a placeholder
+and has to be set to whatever version string the image is uploaded to the
+platform under, since the library compares that string and never reads
+MCUboot's own image header. The images this produces are signed with
+MCUboot's default development key.
+
 Separate build dirs per sample (gitignored via the same `/build_*/`
 pattern as `build/`) so neither clobbers `https_init`'s `build/` — the
 nRF9160 FOTA e2e work depends on that directory staying intact, and only
@@ -1027,10 +1052,9 @@ west flash -d build_wifi_init   # or build_ws_init
 The board's `board.cmake` defaults to the `esp32` runner (esptool-based,
 same tool that already packaged the build output above) with `openocd` as
 a fallback; pass `--esp-device /dev/ttyUSBn` if more than one serial
-adapter is attached. `ws_init` (as `wifi_init`, before the sample split)
-has actually been flashed and run against real ESP32-C6-DevKitC-1
-hardware — see the verification-status paragraph above; `wifi_init` in its
-current (WS-free) form has not.
+adapter is attached. Both samples have been flashed and run against real
+ESP32-C6-DevKitC-1 hardware — see the verification-status paragraph above
+for what each run covered.
 
 ### Documented port gaps
 
@@ -1061,34 +1085,36 @@ were fixed, and summarized here:
   to the nRF91 modem (`CONFIG_MODEM_KEY_MGMT`) rather than compiled from
   mbedTLS at all. This is genuinely new territory `pigeon`'s HTTPS
   connector hadn't been exercised against before.
-- **MCUboot doesn't build for this board in this workspace.**
+- **MCUboot for this board only builds under the vanilla manifest.**
   `esp32c6_devkitc`'s own `Kconfig.sysbuild` defaults `BOOTLOADER` to
   `BOOTLOADER_MCUBOOT` (Espressif boards require a bootloader by default,
-  unlike the nRF9160 boards where it's opt-in) — but building it fails:
-  this workspace's `nrf` project (`sdk-nrf`) pulls `nrf/CMakeLists.txt`
-  into every sysbuild image unconditionally, including MCUboot's, and
+  unlike the nRF9160 boards where it's opt-in), and under `west.yml` that
+  fails: the `nrf` project (`sdk-nrf`) pulls `nrf/CMakeLists.txt` into
+  every sysbuild image unconditionally, including MCUboot's, and
   `nrfxlib/common.cmake` hard-asserts `"GCC_M_CPU must be set to find
   correct lib"` trying to resolve a Nordic-only crypto library path for an
   SoC (`esp32c6`) it has never heard of —
   `nrf/cmake/device_support.cmake` even prints `"SoC esp32c6 is not
-  supported by this release"` immediately before the assert fires. This
-  is NCS's own build machinery assuming Nordic-only SoCs workspace-wide,
-  not something `pigeon` or this sample can fix from the sample level.
-  `wifi_init/sysbuild.conf` explicitly forces `SB_CONFIG_BOOTLOADER_NONE=y`
-  to route around it rather than chase the assertion. **Consequence: no
-  MCUboot means no `CONFIG_PIGEON_FOTA` on ESP32-C6 yet** — the FOTA work
-  in the "Firmware updates" section above is nRF9160-only until this
-  workspace either gains real NCS support for `esp32c6` or someone
-  decouples the `nrf` project's CMake coupling from non-Nordic sysbuild
-  images. Worth re-checking against a future `nrf` (`sdk-nrf`) release
-  before assuming this is permanent.
+  supported by this release"` immediately before the assert fires. That is
+  NCS's own build machinery assuming Nordic-only SoCs workspace-wide, not
+  something `pigeon` or this sample can fix from the sample level. Under
+  `west-vanilla.yml`, where this sample lives and where there is no `nrf`
+  project at all, the assert never fires and upstream Zephyr's own MCUboot
+  esp32c6 port builds: `sysbuild-mcuboot.conf` is the whole port, and the
+  board's default partition table already carries `boot`/`slot0`/`slot1`
+  and a `storage` partition for the settings/NVS backend that FOTA resume
+  and the attempt budget need. `sysbuild.conf` still forces
+  `SB_CONFIG_BOOTLOADER_NONE=y` so the default build stays a plain single
+  image, which is what makes the sample flashable with no signing key.
 - **No graceful-shutdown-before-reboot story.** `shadow.c`'s `reboot`
   handling calls `wifi_disconnect()` before `sys_reboot()`, but unlike
   the nRF91 modem's reset-loop protection (see `https_init`'s "Modem
-  reset safety" note), this hasn't been checked against real ESP32-C6 WiFi
-  behavior — there's no hardware yet to confirm whether an ungraceful
-  reset has any equivalent penalty here. Treat it as untested, not as
-  "known safe."
-- **No MCUmgr/serial-DFU wiring**, unlike `https_init` — there's no
-  bootloader to manage images for yet (see above), so this wasn't set up
-  even as a placeholder.
+  reset safety" note), nothing here is known to penalise an ungraceful
+  reset. The board has since taken plenty of both kinds, graceful reboots
+  after a staged firmware image and hard resets issued mid-download, and
+  rejoined every time; that is an absence of observed trouble, not a
+  measurement, so the disconnect stays in place.
+- **No MCUmgr/serial-DFU wiring**, unlike `https_init`. The FOTA build
+  does have a bootloader to manage images for, but this sample updates
+  itself over the network, so the serial path was never set up even as a
+  placeholder.
