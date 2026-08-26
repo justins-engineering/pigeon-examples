@@ -641,9 +641,16 @@ config change; `pigeon_fota_apply()` fires when the shadow's
 reports its updated `current_config` back via `pigeon_shadow_report()`
 *before* gracefully disconnecting LTE and rebooting — the shadow must
 converge on the platform side before the device goes dark for the swap. A
-failed `pigeon_fota_apply()` leaves `current_config.firmware` unchanged, so
-the next poll sees the same mismatch and retries from byte 0 rather than
-the shadow believing convergence already happened.
+failed `pigeon_fota_apply()`, or a refusal by the library's per-target
+attempt budget, leaves `current_config.firmware` naming the version still
+running AND reports at the platform's existing `current_version` rather
+than the `target_version` that asked for the firmware. The report itself
+still goes out, so the platform learns what the device really is running
+and whatever else in that target it did apply; what it does not learn is
+that the target was met. Reporting convergence there would both hide the
+failure from a dashboard, which reads `target_version == current_version`,
+and stop the device retrying, since that same equality is its own
+early-return.
 
 ### Signing key — do not ship the default
 
@@ -1053,7 +1060,7 @@ The board's `board.cmake` defaults to the `esp32` runner (esptool-based,
 same tool that already packaged the build output above) with `openocd` as
 a fallback; pass `--esp-device /dev/ttyUSBn` if more than one serial
 adapter is attached. Both samples have been flashed and run against real
-ESP32-C6-DevKitC-1 hardware — see the verification-status paragraph above
+ESP32-C6-DevKitC-1 hardware; see the verification-status paragraph above
 for what each run covered.
 
 ### Documented port gaps

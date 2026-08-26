@@ -192,6 +192,18 @@ The most developed sample; treat it as the reference consumer of `pigeon`.
   deliberate unconfirmed-image MCUboot-revert test. See README's FOTA section for the revert-fallback
   writeup and the default-dev-signing-key risk (documented, not fixed — a real prod deploy needs a
   real signing key).
+- **A firmware target that did not end up running leaves the shadow unconverged** (`shadow.c` in
+  both `https_init` and `wifi_init`). The report-back after a failed `pigeon_fota_apply()`, or a
+  refusal by the library's attempt budget, used to go out at the shadow's `target_version`, which
+  is exactly the platform's definition of converged: `GET /pigeons/:id/shadow` then answered
+  `target_version == current_version` while `current_config.firmware.version` still named the old
+  image, so a dashboard showed a converged pigeon running firmware it had never booted, and the
+  device's own `target_version == current_version` early return meant it never retried. Because
+  there is at most one attempt per shadow write that way, the library's per-target attempt budget
+  could never be reached by these apps either. The report still goes out, carrying whatever else in
+  the target the device genuinely did apply plus the firmware version it is really running; only
+  the version it is reported AT changes, to the platform's existing `current_version`. Found on the
+  first hardware run of `wifi_init` with FOTA on.
 
 ### Modem reset safety
 

@@ -196,6 +196,13 @@ int shadow_sync(void) {
    * seeded from current_config above and so already equals the running
    * version, making this correctly a no-op. */
   bool firmware_applied = false;
+  /* Set when the shadow named a firmware image this poll did not end up
+   * running. Convergence is the platform's signal that everything the
+   * target asked for is in place, and it is also what makes the next poll
+   * return early, so reporting it here would leave a dashboard showing a
+   * converged pigeon that is still on the old image and a device that has
+   * stopped trying to change that. */
+  bool firmware_unconverged = false;
 
   if (pigeon_fota_update_available(&target.firmware)) {
     LOG_WRN(
@@ -209,11 +216,10 @@ int shadow_sync(void) {
       LOG_ERR(
           "FOTA apply failed: %d; leaving current image running, will retry next poll", fota_err
       );
-      /* Don't adopt target.firmware into current_config -- report the
-       * version we're still actually running so the next poll sees the
-       * same mismatch and retries from scratch rather than the shadow
-       * believing (wrongly) that this already converged. */
+      /* Don't adopt target.firmware into current_config: the report below
+       * has to name the version this device is still actually running. */
       target.firmware = current_config.firmware;
+      firmware_unconverged = true;
     } else {
       LOG_WRN("FOTA: image staged; will reboot after reporting shadow convergence");
       current_config.firmware = target.firmware;
@@ -232,18 +238,49 @@ int shadow_sync(void) {
       app_shadow_config_descr, ARRAY_SIZE(app_shadow_config_descr), &current_config, report_buf,
       sizeof(report_buf)
   );
+  /* The report still goes out either way: current_config is what this
+   * device is genuinely running, including whatever else in this target it
+   * did apply, and the platform only learns the firmware version actually
+   * booted from here. Only the version it is reported AT changes, which is
+   * what leaves the shadow short of its target. */
+  int32_t report_version = doc.target_version;
+
+#if defined(CONFIG_PIGEON_FOTA)
+  if (firmware_unconverged) {
+    report_version = doc.current_version;
+    LOG_WRN(
+        "Shadow v%d left unconverged: still running firmware %s, reporting at v%d so the next "
+        "poll retries",
+        doc.target_version, current_config.firmware.version, report_version
+    );
+  }
+#endif
 
   if (encode_err) {
     LOG_ERR("Failed to encode current_config for shadow report: %d", encode_err);
   } else {
-    int report_err = pigeon_shadow_report(doc.target_version, report_buf);
+    int report_err = pigeon_shadow_report(report_version, report_buf);
 
     if (report_err) {
       LOG_WRN("Shadow report-back failed: %d", report_err);
     } else {
-      LOG_INF("Reported current_config back to platform at v%d", doc.target_version);
+      LOG_INF("Reported current_config back to platform at v%d", report_version);
     }
   }
+
+#if defined(CONFIG_PIGEON_FOTA)
+  if (target.reboot && firmware_unconverged) {
+    /* Convergence is this one-shot command's only record that it was already
+     * carried out, and the report above deliberately withheld it, so obeying
+     * the request now would reboot the device again on every poll for as
+     * long as the firmware target keeps failing. */
+    LOG_WRN(
+        "Shadow v%d requested reboot; deferring it until the firmware target resolves",
+        doc.target_version
+    );
+    target.reboot = false;
+  }
+#endif
 
   /* Demonstrates command-via-shadow (see pigeon's CLAUDE.md: pidgeiot has no
    * formal generation-counter/command-ack model yet, only this raw
