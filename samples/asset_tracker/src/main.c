@@ -61,7 +61,7 @@ int main(void) {
   int err = lte_connect_with_retry();
 
   if (err) {
-    sys_reboot(SYS_REBOOT_COLD);
+    pigeon_reboot();
   }
 
   /* Endpoint and token come from CONFIG_PIGEON_ENDPOINT/CONFIG_PIGEON_TOKEN

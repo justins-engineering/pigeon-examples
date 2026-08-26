@@ -214,7 +214,7 @@ int shadow_sync(void) {
     LOG_WRN("Shadow v%d requested reboot; disconnecting and rebooting now", doc.target_version);
     pigeon_mqtt_stop();
     wifi_disconnect();
-    sys_reboot(SYS_REBOOT_COLD);
+    pigeon_reboot();
   }
 
   return 0;

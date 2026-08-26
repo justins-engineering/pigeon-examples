@@ -215,7 +215,7 @@ int shadow_sync(void) {
     pigeon_ws_stop();
 #endif
     wifi_disconnect();
-    sys_reboot(SYS_REBOOT_COLD);
+    pigeon_reboot();
   }
 
   return 0;

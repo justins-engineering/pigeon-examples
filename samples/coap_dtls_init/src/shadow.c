@@ -177,14 +177,14 @@ int shadow_sync(void) {
    * device would reboot on every single poll once set true.
    *
    * Power the modem off gracefully first (lte_disconnect() -> CFUN=0, see
-   * net/connection_manager.c) instead of calling sys_reboot() directly: an
+   * net/connection_manager.c) before rebooting: an
    * ungraceful reset trips the nRF91 modem's reset-loop protection and
    * refuses LTE attach for 30 minutes. Same pattern the https_init sample
    * uses for its "reboot": true handling. */
   if (target.reboot) {
     LOG_WRN("Shadow v%d requested reboot; disconnecting and rebooting now", doc.target_version);
     lte_disconnect();
-    sys_reboot(SYS_REBOOT_COLD);
+    pigeon_reboot();
   }
 
   return 0;

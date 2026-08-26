@@ -309,7 +309,7 @@ int shadow_sync(void) {
   if (target.reboot) {
     LOG_WRN("Shadow v%d requested reboot; disconnecting and rebooting now", doc.target_version);
     wifi_disconnect();
-    sys_reboot(SYS_REBOOT_COLD);
+    pigeon_reboot();
   }
 
 #if defined(CONFIG_PIGEON_FOTA)
@@ -319,7 +319,7 @@ int shadow_sync(void) {
         current_config.firmware.version
     );
     wifi_disconnect();
-    sys_reboot(SYS_REBOOT_COLD);
+    pigeon_reboot();
   }
 #endif
 
