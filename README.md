@@ -703,6 +703,12 @@ pointing a real fleet at a real backend, generate a project key, keep the
 private half off any machine that does not sign a release image, and make
 sure only the firmware-upload path on the `dovecote` side ever touches it.
 
+The key currently under `samples/keys/private/` is a **bench key**, generated
+on the bench with `imgtool keygen` so the board verifies a real signature
+against a real key rather than a published one. It is untracked and
+gitignored, and it is not a custody key: anything that leaves the bench gets
+a key the owner holds and controls.
+
 The ESP32-C6 is a bench target. There are no current plans to put it in the
 field.
 
