@@ -232,8 +232,19 @@ int shadow_sync(void) {
       target.firmware = current_config.firmware;
       firmware_unconverged = true;
     } else {
-      LOG_WRN("FOTA: image staged; will reboot after reporting shadow convergence");
-      current_config.firmware = target.firmware;
+      LOG_WRN("FOTA: image staged; rebooting to let the new image report for itself");
+      /* Deliberately does not adopt target.firmware into current_config,
+       * and reports short of the target below. A staged image is not a
+       * booted one: the bootloader still gets to refuse it, and claiming
+       * convergence here would leave the platform reading converged while
+       * this device carries on running the old image and stops trying,
+       * since convergence is also what makes the next poll return early.
+       * The image that actually boots reports its own baked version on its
+       * first successful poll, which is the only place that string is
+       * worth anything. The cost is one poll cycle before the platform
+       * sees convergence, and that cycle is exactly the window in which a
+       * refusal becomes visible. */
+      firmware_unconverged = true;
       firmware_applied = true;
     }
   }
@@ -262,11 +273,19 @@ int shadow_sync(void) {
 #if defined(CONFIG_PIGEON_FOTA)
   if (firmware_unconverged) {
     report_version = doc.current_version;
-    LOG_WRN(
-        "Shadow v%d left unconverged: still running firmware %s, reporting at v%d so the next "
-        "poll retries",
-        doc.target_version, current_config.firmware.version, report_version
-    );
+    if (firmware_applied) {
+      LOG_WRN(
+          "Shadow v%d left unconverged: reporting at v%d as firmware %s, the version still "
+          "running; the image being booted into reports its own on its first poll",
+          doc.target_version, report_version, current_config.firmware.version
+      );
+    } else {
+      LOG_WRN(
+          "Shadow v%d left unconverged: still running firmware %s, reporting at v%d so the next "
+          "poll retries",
+          doc.target_version, current_config.firmware.version, report_version
+      );
+    }
   }
 #endif
 
@@ -287,7 +306,13 @@ int shadow_sync(void) {
     /* Convergence is this one-shot command's only record that it was already
      * carried out, and the report above deliberately withheld it, so obeying
      * the request now would reboot the device again on every poll for as
-     * long as the firmware target keeps failing. */
+     * long as the firmware target keeps failing.
+     *
+     * A staged image withholds convergence too, so a shadow carrying both a
+     * firmware target and this command reboots twice: once into the new
+     * image, then once more for the command, after the booted image has
+     * reported the convergence that records it. Both reboots are asked for
+     * and the sequence terminates. */
     LOG_WRN(
         "Shadow v%d requested reboot; deferring it until the firmware target resolves",
         doc.target_version
@@ -315,7 +340,7 @@ int shadow_sync(void) {
   if (firmware_applied) {
     LOG_WRN(
         "FOTA: disconnecting and rebooting into newly staged firmware %s",
-        current_config.firmware.version
+        target.firmware.version
     );
     wifi_disconnect();
     pigeon_reboot();

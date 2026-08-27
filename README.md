@@ -635,11 +635,23 @@ runs on every successful `shadow_sync()` (the app's definition of "healthy
 boot") *before* the convergence early-return, so a freshly-applied image
 gets confirmed on its very first successful poll rather than waiting for a
 config change; `pigeon_fota_apply()` fires when the shadow's
-`firmware.version` doesn't match the running build; on success the device
-reports its updated `current_config` back via `pigeon_shadow_report()`
-*before* gracefully disconnecting LTE and rebooting — the shadow must
-converge on the platform side before the device goes dark for the swap. A
-failed `pigeon_fota_apply()`, or a refusal by the library's per-target
+`firmware.version` doesn't match the running build.
+
+**Convergence means booted, not staged.** A successful `pigeon_fota_apply()`
+has downloaded, hash-verified and staged an image, and none of that is the
+bootloader having accepted it. So the device reports at the platform's
+existing `current_version`, still naming the version it is running, and only
+then reboots. The image that comes up reports convergence for itself on its
+first successful poll, when its own baked
+`CONFIG_PIGEON_FOTA_CURRENT_VERSION` finally matches what the shadow asked
+for. That costs one poll cycle before a dashboard shows converged, and that
+cycle is the whole point: it is the window in which a bootloader refusing
+the image stays visible instead of being papered over. Claiming convergence
+from the staging device would leave the platform reading converged while the
+device runs the old image and stops retrying, since convergence is also its
+own early-return.
+
+A failed `pigeon_fota_apply()`, or a refusal by the library's per-target
 attempt budget, leaves `current_config.firmware` naming the version still
 running AND reports at the platform's existing `current_version` rather
 than the `target_version` that asked for the firmware. The report itself
@@ -718,12 +730,13 @@ permanent swap — this is what makes a bad update self-healing:
 1. Shadow requests a new `firmware.version` → device downloads, verifies
    sha256, and schedules the test-swap (secondary slot marked
    pending-test, not yet confirmed).
-2. Device reports shadow convergence, disconnects LTE, and cold-reboots.
-   MCUboot swaps the new image into the primary slot and boots it *once*
-   without marking it permanent.
-3. If the new image boots and its first `shadow_sync()` succeeds,
-   `pigeon_fota_confirm_boot()` calls `boot_write_img_confirmed()` and the
-   swap becomes permanent — MCUboot will keep booting this image on future
+2. Device reports at its existing `current_version`, still naming the
+   firmware it is running, disconnects LTE, and cold-reboots. MCUboot swaps
+   the new image into the primary slot and boots it *once* without marking
+   it permanent.
+3. If the new image boots and its first `shadow_sync()` succeeds, it
+   reports convergence for itself, and `pigeon_fota_confirm_boot()` calls
+   `boot_write_img_confirmed()` so the swap becomes permanent — MCUboot will keep booting this image on future
    resets.
 4. If the new image never reaches a successful `shadow_sync()` (crash,
    boot loop, LTE failure, wrong signing key) before the next reset,
