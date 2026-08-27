@@ -11,7 +11,7 @@ This directory is a west workspace: `samples/` is the manifest ("self") repo, an
 `nrfxlib/`) are vendored checkouts fetched by `west update` (gitignored, not part
 of this repo).
 
-**Two west manifests live side by side in `samples/`, as of task #8 (2026-07-22)**:
+**Two west manifests live side by side in `samples/`**:
 
 - `west-vanilla.yml` -- **the primary manifest**, plain upstream Zephyr
   (`import: true` off the `zephyr` project, no vendor SDK). Everything except
@@ -73,9 +73,9 @@ samples/
                            # than failing; CONFIG_ASSET_TRACKER_SIM_GPS
                            # substitutes a synthetic moving track for demos
                            # where a real fix will never come. Also turns on
-                           # CONFIG_PIGEON_REBOOT_ON_FATAL/_WATCHDOG (task
-                           # #45) -- a field asset tracker is the poster
-                           # child for unattended wedge recovery. No
+                           # CONFIG_PIGEON_REBOOT_ON_FATAL/_WATCHDOG -- a
+                           # field asset tracker is the poster child for
+                           # unattended wedge recovery. No
                            # MCUboot/sysbuild (no FOTA in this sample), but
                            # still needs a board overlay to rebalance
                            # slot0's secure/nonsecure split -- see
@@ -152,7 +152,7 @@ source .venv/bin/activate
 west build -d build samples/https_init -b circuitdojo_feather/nrf9160/ns
 ```
 
-`https_init` also builds and runs for `native_sim` (task #54), with
+`https_init` also builds and runs for `native_sim`, with
 sysbuild's MCUboot image disabled at the command line -- MCUboot's crypto
 build hard-asserts trying to target the native/POSIX SoC (`nrfxlib`'s
 `common.cmake` has never heard of it), and FOTA is meaningless without a
@@ -219,14 +219,14 @@ IDE tooling to resolve `pigeon`'s includes.
 (`CONFIG_PIGEON_COAP_TRANSPORT_UDP` -- RFC 7252 confirmable exchanges with
 real retransmission/dedup on one long-lived PSK DTLS session, RFC 9146
 Connection ID offered by default; `coap_tcp_init` remains the RFC 8323
-TLS/TCP sibling). The real dovecote backend still has **no CoAP listener
-deployed** (the terminator is a tracked roadmap item), so this sample's
+TLS/TCP sibling). The platform terminates CoAP with
+[`loft`](https://github.com/justins-engineering/loft), but this sample's
 protocol conformance peer is [libcoap](https://libcoap.net)'s
-`coap-server`/`coap-client`, which is a stronger independent check anyway
--- it's a from-scratch third-party CoAP implementation, not our own code
-agreeing with itself.
+`coap-server`/`coap-client`, which is the stronger check either way: a
+from-scratch third-party CoAP implementation, rather than our own two sides
+agreeing with each other.
 
-The 2026-08-10 verification matrix, all on `native_sim/native/64` against a
+The verification matrix, all on `native_sim/native/64` against a
 locally-built libcoap (`-DENABLE_DTLS=ON -DENABLE_TCP=ON`, examples on):
 
 - **DTLS-PSK handshake + full platform cycle** (shadow GET -> JSON decode ->
@@ -275,14 +275,15 @@ before any traffic, mbedTLS `-0x7F80`); the nRF9160 flavor instead turns on
 modem's own credential store, written eagerly at `pigeon_init()` time --
 which is why this sample's `main.c` calls `pigeon_init()` **before**
 `lte_connect()`, the reverse of `coap_tcp_init`'s ordering. The nRF9160
-build is compile-verified only (no CoAP terminator deployed to talk to over
-LTE, and no bench time on this task).
+build is compile-verified only; it has not been run against a live
+terminator over LTE.
 
 ## MQTT (`mqtt_init`) and the local broker e2e
 
 `mqtt_init` exercises `pigeon`'s MQTT connector
 (`CONFIG_PIGEON_CONNECTOR_MQTT`) against **pigeonhole**, PidgeIoT's MQTT
-broker (`~/pigeonhole`). The broker is a thin bridge: it terminates the MQTT
+broker ([`pigeonhole`](https://github.com/justins-engineering/pigeonhole)).
+The broker is a thin bridge: it terminates the MQTT
 session and turns every publish into an ordinary call on the platform's own
 `/device/pigeons/<id>/...` routes, carrying this pigeon's bearer token, and
 it holds the pigeon's device WebSocket as the session's authentication, its
@@ -312,7 +313,7 @@ What that changes for a device, versus the HTTPS and CoAP samples:
 ### The end-to-end driver
 
 `scripts/test/native-sim-e2e.sh` runs the whole device-to-platform path on
-one workstation: it builds the broker from `~/pigeonhole`, issues its
+one workstation: it builds the broker from a `pigeonhole` checkout, issues its
 development certificate, starts `scripts/test/mock_dovecote.py` (a
 stdlib-only stand-in for the edge -- the three device routes, the device
 WebSocket with its snapshot-on-accept frame, and the internal PSK lookup),
@@ -331,8 +332,8 @@ target shadow arrives unasked and is applied; telemetry, a shadow report and
 a dictionary-log chunk each reach their own route with a bearer token on
 them; a config change pushed mid-session reaches the device and is reported
 back converged; and the device reconnects after the broker is killed under
-it. Both modes were green on 2026-08-25 (session accepted as MQTT 3.1.1, one
-report per target version, reconnect inside a second).
+it. Both modes pass: the session is accepted as MQTT 3.1.1, one report per
+target version, reconnect inside a second.
 
 The device logs the suite each session negotiated, which is worth reading
 rather than assuming -- the broker lists its PSK suites first with server
@@ -441,9 +442,9 @@ tweak.
 
 ### ESP32-C6
 
-Build-verified only so far, both modes (`60.2%` SRAM, `6.4-6.6%` flash);
-no hardware run yet -- the bench C6 is queued behind loft's CoAP regression
-pass.
+Both modes build clean (`60.2%` SRAM, `6.4-6.6%` flash). Nothing here has
+been run on an ESP32-C6 yet, so the `native_sim` driver above is what this
+connector's behavior is established against.
 
 ```sh
 west build -d build_mqtt_init samples/mqtt_init -b esp32c6_devkitc/esp32c6/hpcore
@@ -535,7 +536,7 @@ apply`, which is expected, not a failure.
 ## Decoding uploaded device logs (`CONFIG_PIGEON_LOG_UPLOAD`)
 
 `https_init`'s `prj.conf` turns on `pigeon`'s opt-in remote-logging backend
-(`CONFIG_PIGEON_LOG_UPLOAD`, see `~/pigeon/zephyr/Kconfig` and
+(`CONFIG_PIGEON_LOG_UPLOAD`, see `pigeon`'s `zephyr/Kconfig` and
 `src/pigeon_log_backend.c`): a background ring buffer captures this device's
 own log output via Zephyr's **dictionary-based logging**
 (`CONFIG_LOG_DICTIONARY_SUPPORT`, selected automatically) and flushes it in
@@ -604,28 +605,25 @@ first decode.
 **No-hardware sanity check:** `log_parser.py <dbfile> /dev/null` exits `0`
 with no output (empty input, nothing to decode) — confirms the parser and
 database pair are wired up correctly, independent of having a real captured
-chunk yet. Verified against this repo's own
-`build/https_init/zephyr/log_dictionary.json` while writing this section.
+chunk yet.
 
-**Verified end-to-end on real hardware (2026-07-17):** flashed `https_init`
-to a CircuitDojo nRF9160 Feather against the staging pigeon, confirmed via
-`GET /pigeons/:id/logs` that dictionary-log chunks landed on the backend at
-the expected `CONFIG_PIGEON_LOG_UPLOAD_MAX_INTERVAL_MS` (60s) cadence, and
-decoded one with the exact command above. The decoded text lined up
-byte-for-byte with what `pyserial-miniterm` showed live over UART for the
-same boot — including the `*** Booting Pigeon ...` banner and first shadow
-sync — confirming the dictionary database and the uploaded chunk really do
-come from the same build.
+The whole path has been exercised on a CircuitDojo nRF9160 Feather:
+dictionary-log chunks reach the backend on the
+`CONFIG_PIGEON_LOG_UPLOAD_MAX_INTERVAL_MS` (60s) cadence, come back out of
+`GET /pigeons/:id/logs`, and decode with the exact command above into text
+matching byte-for-byte what the UART console printed for the same boot,
+banner and first shadow sync included. That match is the property worth
+having: it is what shows the dictionary database and the uploaded chunk
+really do come from the same build.
 
 ## Firmware updates (`CONFIG_PIGEON_FOTA`)
 
-**Backend note (task #8, 2026-07-22):** `pigeon`'s FOTA client now has two
-selectable backends -- see `../pigeon/CLAUDE.md`/`README.md`. This sample's
-`prj.conf` explicitly sets `CONFIG_PIGEON_FOTA_NCS=y` to keep using the
-original nRF Connect SDK `dfu_target` backend, since that's the one that's
-actually been run through real hardware (see "Fallback / revert behavior"
-below) -- not the new vendor-neutral upstream `flash_img`/
-`boot_request_upgrade` default, which hasn't been hardware-verified yet.
+**Backend note:** `pigeon`'s FOTA client has two selectable backends (see
+`../pigeon/README.md`). This sample's `prj.conf` explicitly sets
+`CONFIG_PIGEON_FOTA_NCS=y` to keep the nRF Connect SDK `dfu_target`
+backend, which is the one this board has run on real hardware, rather than
+the vendor-neutral upstream `flash_img`/`boot_request_upgrade` default,
+which it has not.
 
 `https_init`'s `prj.conf` turns on `pigeon`'s opt-in FOTA client
 (`CONFIG_PIGEON_FOTA`, see `../pigeon/README.md`'s "Firmware updates"
@@ -753,14 +751,22 @@ by any of this, and `pigeon`'s FOTA client on the C6 still applies a signed
 image exactly as before, since it writes bytes into the secondary slot and
 lets MCUboot judge them.
 
-**Not yet verified against real hardware or a live backend** as of this
-writing: `dovecote`'s `/device/pigeons/:id/firmware` route (task #23) is
-still in flight, so the code above has only been build-verified (`west
-build` exit 0, MCUboot image signs) — no chunk has actually been
-downloaded, flashed, or booted on a CircuitDojo nRF9160 Feather yet. Update
-this section with a real hardware e2e result (mirroring the log-upload
-section's "Verified end-to-end on real hardware" note above) once that
-lands.
+This path has run on real hardware against the live platform, on both
+boards. On a CircuitDojo nRF9160 Feather: chunked download, sha256 verify,
+the MCUboot test-swap schedule, the convergence report and the graceful
+reboot. On the ESP32-C6, repeatedly and with signed images: the same cycle
+end to end, download resume across a reboot from the persisted offset, the
+per-target attempt budget spending out and reopening on an operator
+re-push, and a rate-limited download pacing itself on the server's
+Retry-After and still finishing. What is still uncovered is a clean
+re-authentication after the reboot and a deliberate unconfirmed-image
+revert, and the revert half cannot be covered on the C6 at all, whose
+bootloader is overwrite-only.
+
+The baked-token trap is the one to know before trying any of it: an OTA
+image carries `CONFIG_PIGEON_TOKEN` from build time, so an image built
+before a token rotation will 401 forever once booted into. Rebuild it after
+rotating a token; re-uploading the same artifact does nothing.
 
 ## GNSS asset tracker
 
@@ -875,11 +881,11 @@ about the secure/nonsecure split within slot0 (that's TF-M's concern),
 only slot0's total size, which this rebalance leaves unchanged. `slot1`
 is left untouched at its stock size.
 
-**Wedge recovery** (`CONFIG_PIGEON_REBOOT_ON_FATAL`/`CONFIG_PIGEON_WATCHDOG`,
-task #45): both turned on, zero app code needed beyond the Kconfig -- a
-field asset tracker parked somewhere unattended is the poster child for
-needing to recover from a wedge on its own, see `~/pigeon/CLAUDE.md` for
-the full diagnosis/writeup these two options came from.
+**Wedge recovery** (`CONFIG_PIGEON_REBOOT_ON_FATAL`/`CONFIG_PIGEON_WATCHDOG`):
+both turned on, zero app code needed beyond the Kconfig. A field asset
+tracker parked somewhere unattended is the poster child for needing to
+recover from a wedge on its own; `pigeon`'s Kconfig help covers what each
+option does and does not catch.
 
 ### Build verification
 
@@ -902,11 +908,8 @@ from an already-provisioned staging pigeon, following this repo's usual
 gitignored-`prj.local.conf` pattern -- never committed, never printed.
 
 **Verified indoors on a real Circuit Dojo nRF9160 Feather with a real GPS
-antenna attached** (task's premise pivoted from the 9151 to the 9160 mid-task
--- the antenna was physically on the 9160, and its CMSIS-DAP debug probe
-was reachable via the existing J-Link, so hardware verification landed on
-`circuitdojo_feather/nrf9160/ns` rather than the 9151 target). Booted once
-(`build_9160_task52`, matching commits a9fa7fd + f0b22d3 below), left
+antenna attached**, on the `circuitdojo_feather/nrf9160/ns` target rather
+than the 9151 one, since that is the board the antenna was on. Left
 running unattended and cycling for well over an hour: LTE attach, GNSS
 activation, and `shadow_sync()` all completed successfully every poll, no
 crashes, no reboots.
@@ -941,7 +944,7 @@ assumption, not a measurement. `CONFIG_ASSET_TRACKER_SIM_GPS` remains
 available for demoing the pipeline without any sky view at all (CI, a
 desk, no antenna).
 
-#### Debug-tooling lesson learned the hard way (2026-07-27)
+#### Debug-tooling trap: never rapid-cycle a debug probe
 
 **Never rapid-cycle `nrfjprog`/debug-probe connections against a live
 cellular target.** Polling RTT via repeated one-shot `nrfjprog --memrd`
@@ -958,9 +961,8 @@ per boot before going silent, self-fixed the moment the aggressive polling
 stopped, strongly (though not conclusively -- an A/B repro wasn't run,
 since that would have cost more resets than it was worth) suggesting the
 repeated connect/disconnect cycles were disturbing the live modem's own AT
-command timing, not a code bug at all. Several hours of this session went
-into diagnosing what turned out to be self-inflicted debug-tooling
-interference.
+command timing, not a code bug at all. Every one of those symptoms reads
+as a firmware defect and none of them was one.
 
 **What works instead**: start exactly one `JLinkGDBServer` session
 (`-noreset`) right after the one deliberate flash, and leave it running for
@@ -972,10 +974,8 @@ disturbance a fresh connect causes. Advance RTT's `RdOff` from within that
 same session (`set variable _SEGGER_RTT.aUp[0].RdOff = ...WrOff`) so the
 target's own writes don't stall out; resume with `monitor go` (not GDB's
 `continue`, which blocks the script until the target *stops* again -- not
-useful here) before detaching. This is what `gdb_rtt_poll.sh`-style scripts
-in this task's own working notes did once the lesson landed, and it's the
-pattern to reach for first on any future real-hardware debug session against
-a live cellular device on this bench.
+useful here) before detaching. That is the pattern to reach for first on
+any real-hardware debug session against a live cellular device.
 
 ## ESP32-C6-DevKitC-1 port
 
@@ -990,7 +990,7 @@ so that WS is never the thing a reader has to opt *out* of to see plain
 HTTPS-over-WiFi, and so `wifi_init` stays a clean transport reference the
 same way `https_init`/`coap_tcp_init` are for their own transports. WS
 itself is additive to (never a replacement for) HTTPS polling — see
-`pigeon`'s `CLAUDE.md`/Kconfig, `CONFIG_PIGEON_WS` `depends on
+`pigeon`'s Kconfig, `CONFIG_PIGEON_WS` `depends on
 CONFIG_PIGEON_CONNECTOR_HTTPS` — and it's opt-in specifically for
 WiFi/mains-powered devices; constrained or cellular devices should keep
 polling HTTPS the way `https_init`/`coap_tcp_init` do, which is why neither
@@ -1010,8 +1010,7 @@ was `wifi_init` itself until the sample split below, and in that form was
 hardware-verified end to end against `dovecote-staging` (WS connect, a
 dashboard-pushed `shadow_update` applied in ~1s, telemetry-over-WS in
 ~10ms vs. ~10s over HTTPS, and a live socket-steal reconnect test) — see
-`~/pigeon/CLAUDE.md` and this workspace's own `CLAUDE.md` for that
-writeup, plus `ws_init/prj.conf`'s inline comments for the eleven
+`ws_init/prj.conf`'s inline comments for the eleven
 WiFi/native-mbedTLS-stack gaps (SNI, PEM parsing, PSA key/hash wants,
 heap wiring, etc.) found getting there, none of which exist in the
 nRF91 samples since they offload TLS to the cellular modem instead.
@@ -1024,15 +1023,11 @@ comments for exactly what carried over and what didn't.
 
 ### `hal_espressif` module
 
-As of task #8, `wifi_init`/`ws_init` build under `west-vanilla.yml`, whose
-single `zephyr` project (`import: true`, plain upstream Zephyr) already
-lists `hal_espressif` (Espressif's Zephyr HAL, needed for any ESP32 board
-target) in its own manifest's default-included `hal` group -- no
-hand-maintained entry needed in this repo's manifest at all, unlike before
-task #8 (when both ESP32 and nRF91 samples shared a single NCS-based
-`west.yml`, which required adding `hal_espressif` there explicitly by hand
--- see git history for that pin's own troubleshooting story, since it's no
-longer present in this repo's manifest files).
+`wifi_init`/`ws_init` build under `west-vanilla.yml`, whose single `zephyr`
+project (`import: true`, plain upstream Zephyr) already lists
+`hal_espressif` (Espressif's Zephyr HAL, needed for any ESP32 board target)
+in its own manifest's default-included `hal` group, so this repo's manifest
+carries no hand-maintained entry for it.
 
 Either way, don't forget `west blobs fetch hal_espressif` after `west
 update` -- WiFi needs prebuilt binary blobs (`libcore.a`/`libnet80211.a`/
@@ -1185,3 +1180,7 @@ were fixed, and summarized here:
   does have a bootloader to manage images for, but this sample updates
   itself over the network, so the serial path was never set up even as a
   placeholder.
+
+## License
+
+AGPL-3.0. See [LICENSE](LICENSE).
