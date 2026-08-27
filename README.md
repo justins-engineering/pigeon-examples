@@ -663,21 +663,30 @@ one is not. `samples/wifi_init/sysbuild-mcuboot.conf` assigns
 `SB_CONFIG_BOOT_SIGNATURE_TYPE_ECDSA_P256=y` rather than relying on a
 default, since the board's default is what would otherwise win.
 
-Which key signs it is `samples/mcuboot-signing.cmake`, shared by every
-sample through a one-line `sysbuild.cmake`. A key is a build input, never a
-commit:
+A key is a build input, never a commit. Generate one and point
+`PIGEON_BOOT_SIGNATURE_KEY_FILE` at it:
 
 ```sh
-imgtool keygen -k samples/keys/private/boot-ecdsa-p256.pem -t ecdsa-p256
+imgtool keygen -k ~/keys/pigeon-boot-ecdsa-p256.pem -t ecdsa-p256
+export PIGEON_BOOT_SIGNATURE_KEY_FILE=~/keys/pigeon-boot-ecdsa-p256.pem
 ```
 
-That path is already in `.gitignore` (`**/keys/private/*`). Point
-`PIGEON_BOOT_SIGNATURE_KEY_FILE` at a PEM elsewhere to override it. Note
-that `CONFIG_BOOT_SIGNATURE_KEY_FILE` wants the **private** PEM: the build
-extracts the public half and compiles that into the bootloader, and
-`imgtool` signs with the private half.
+`samples/keys/private/` is a reasonable place to keep it inside the tree,
+since `.gitignore` already excludes `**/keys/private/*`, but the variable is
+what the build reads.
 
-With no key at either location the build still works, and says so:
+It is read by `samples/Kconfig.sysbuild.signing`, shared by every sample,
+and it deliberately sets one symbol at the sysbuild level rather than
+either image's own key setting. Sysbuild feeds that symbol to two places:
+the public half compiled into the bootloader, and the private half
+`imgtool` signs the application with. Override only one and the bootloader
+ends up trusting a key nothing signs with, which no build catches. Both
+images compile, both report ECDSA P-256, the bootloader's key config reads
+back exactly as intended, and every update is then refused at the reboot
+after a download that verified perfectly. Note also that the symbol wants
+the **private** PEM; the build extracts the public half itself.
+
+With the variable unset the build still works, and says so:
 
 ```
 CMake Warning at samples/mcuboot-signing.cmake:
