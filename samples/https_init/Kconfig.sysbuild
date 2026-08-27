@@ -1,0 +1,3 @@
+rsource "../Kconfig.sysbuild.signing"
+
+source "share/sysbuild/Kconfig"

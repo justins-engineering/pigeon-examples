@@ -1,3 +1,5 @@
+rsource "../Kconfig.sysbuild.signing"
+
 # circuitdojo_feather (nRF9160) carries no board-level BOOTLOADER default of
 # its own and would otherwise land on the global BOOTLOADER_NONE default:
 # the app image gets linked straight into the SoC's default flash

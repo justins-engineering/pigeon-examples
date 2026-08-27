@@ -1,0 +1,20 @@
+# Sourced by each sample's Kconfig.sysbuild ahead of share/sysbuild/Kconfig,
+# so this default is tried before the built-in one.
+#
+# Sysbuild feeds this single symbol to both images: the public half compiled
+# into MCUboot (images/bootloader/CMakeLists.txt) and the private half imgtool
+# signs the application with (MAIN_image_default.cmake). They have to be the
+# same key. Setting either image's own key config on its own gets them out of
+# step, and a bootloader that trusts a key nothing signs with refuses every
+# update it is ever offered, at the reboot rather than at the download.
+#
+# It has to be decided here rather than in CMake, because by the time a
+# sysbuild.cmake runs this symbol has already been resolved and copied into
+# both images.
+#
+# Unset leaves the built-in default alone, which is MCUboot's own published
+# development key: fine for a bench, forgeable by anyone, and warned about at
+# configure time by mcuboot-signing.cmake.
+
+config BOOT_SIGNATURE_KEY_FILE
+	default "$(PIGEON_BOOT_SIGNATURE_KEY_FILE)" if "$(PIGEON_BOOT_SIGNATURE_KEY_FILE)" != ""

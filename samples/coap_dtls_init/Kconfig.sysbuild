@@ -1,3 +1,5 @@
+rsource "../Kconfig.sysbuild.signing"
+
 # esp32c6_devkitc's own Kconfig.sysbuild defaults BOOTLOADER to MCUboot, but
 # this sample has no signing key or CONFIG_PIGEON_FOTA wired up for that
 # board -- there's no second slot to build against, so force it back off,
