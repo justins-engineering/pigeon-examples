@@ -8,7 +8,6 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/logging/log_ctrl.h>
 #include <zephyr/sys/printk.h>
-#include <zephyr/sys/reboot.h>
 
 #include "net/connection_manager.h"
 
@@ -291,11 +290,11 @@ int shadow_sync(void) {
    *
    * Both reboot triggers below -- this one and the FOTA-applied reboot
    * further down -- power the modem off gracefully first
-   * (lte_disconnect() -> lte_lc_power_off()) before rebooting: an
-   * ungraceful reset trips the nRF91 modem's reset-loop
-   * protection and refuses LTE attach for 30 minutes (see this repo's
-   * CLAUDE.md "Modem reset safety" and connection_manager.c). Skipping the
-   * graceful power-off on either path reintroduces that reset-loop risk. */
+   * (lte_disconnect() -> lte_lc_power_off()) before rebooting: an ungraceful
+   * reset trips the nRF91 modem's reset-loop protection and refuses LTE
+   * attach for 30 minutes (see this repo's CLAUDE.md "Modem reset safety"
+   * and connection_manager.c). Skipping the graceful power-off on either
+   * path reintroduces that reset-loop risk. */
   if (target.reboot) {
     LOG_WRN("Shadow v%d requested reboot; disconnecting and rebooting now", doc.target_version);
     lte_disconnect();

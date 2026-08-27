@@ -1,7 +1,6 @@
 #include <pigeon.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/sys/reboot.h>
 #include <zephyr/sys/util.h>
 
 #include "gnss.h"
