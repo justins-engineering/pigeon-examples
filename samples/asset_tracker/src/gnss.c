@@ -61,8 +61,8 @@ int tracker_gnss_init(void) {
   /* CONFIG_LTE_NETWORK_MODE_LTE_M_GPS only puts GPS in the modem's *system*
    * mode (which RATs/GNSS it's allowed to use) -- it does not, by itself,
    * turn GNSS on. connection_manager.c's lte_connect() activates LTE via
-   * conn_mgr/NRF_MODEM_LIB_NET_IF, which -- confirmed on real hardware, see
-   * this sample's README -- issues CFUN=21 (LTE_LC_FUNC_MODE_ACTIVATE_LTE,
+   * conn_mgr/NRF_MODEM_LIB_NET_IF, which issues CFUN=21
+   * (LTE_LC_FUNC_MODE_ACTIVATE_LTE,
    * "Activates LTE without changing GNSS"), not CFUN=1
    * (LTE_LC_FUNC_MODE_NORMAL, whose doc comment says "Both LTE and GNSS
    * will become active if the respective system modes are enabled").

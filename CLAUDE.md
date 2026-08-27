@@ -183,9 +183,9 @@ The most developed sample; treat it as the reference consumer of `pigeon`.
   fixed here in the README rather than upstream).
 - **FOTA wiring** (`CONFIG_PIGEON_FOTA`, added 2026-07-18): `shadow.c` now also checks the shadow's
   `firmware` target and calls into `pigeon`'s FOTA client when a new version is offered. `shadow.c`
-  was also given a graceful LTE detach before any FOTA-triggered `sys_reboot`, matching the same
-  `CFUN=0` discipline `connection_manager.c` already used elsewhere. Real hardware e2e (nRF9160,
-  board 1050038518) has exercised download → sha256 verify → MCUboot test-swap schedule → shadow
+  was also given a graceful LTE detach before any FOTA-triggered `pigeon_reboot()`, matching the
+  same `CFUN=0` discipline `connection_manager.c` already used elsewhere. Real hardware e2e
+  (nRF9160) has exercised download → sha256 verify → MCUboot test-swap schedule → shadow
   convergence report → graceful reboot successfully; what's not yet confirmed is a clean
   post-reboot re-authentication/convergence (an OTA test image built before a token rotation will
   401 forever once booted — rebuild, don't just re-upload, after rotating a device's token) and the
@@ -261,7 +261,7 @@ work around or skip it when scripting flashes/tests.
   `lte_lc_func_mode_set(LTE_LC_FUNC_MODE_ACTIVATE_GNSS)` in `gnss.c` (`CONFIG_LTE_NETWORK_MODE_LTE_M_GPS`
   only sets modem *system* mode, not functional mode — every `nrf_modem_gnss_*` call failed
   `-NRF_EACCES` without it). Task #52 (same day): `main.c` wraps the initial `lte_connect()` in a
-  bounded retry-with-backoff, `sys_reboot()`-ing after all rounds fail, since a boot that hits the
+  bounded retry-with-backoff, `pigeon_reboot()`-ing after all rounds fail, since a boot that hits the
   nRF91 modem's 30-minute reset-loop restriction (see "Modem reset safety" below) used to just
   return and sit fully idle forever with no recovery path — a real, repeatedly-observed failure mode
   during this same bring-up session. Both boards' overlays rebalance slot0 to 128 KB secure/320 KB
