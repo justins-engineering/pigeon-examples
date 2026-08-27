@@ -43,3 +43,6 @@ prj.local.conf
 
 # Cortex debugging states
 .vscode/.cortex-debug.registers.state.json
+
+# native_sim writes its flash simulator file into the working directory
+flash.bin
