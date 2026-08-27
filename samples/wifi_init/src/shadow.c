@@ -8,7 +8,6 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/logging/log_ctrl.h>
 #include <zephyr/sys/printk.h>
-#include <zephyr/sys/reboot.h>
 
 #include "net/wifi_connection_manager.h"
 
@@ -309,7 +308,7 @@ int shadow_sync(void) {
   if (target.reboot) {
     LOG_WRN("Shadow v%d requested reboot; disconnecting and rebooting now", doc.target_version);
     wifi_disconnect();
-    sys_reboot(SYS_REBOOT_COLD);
+    pigeon_reboot();
   }
 
 #if defined(CONFIG_PIGEON_FOTA)
@@ -319,7 +318,7 @@ int shadow_sync(void) {
         current_config.firmware.version
     );
     wifi_disconnect();
-    sys_reboot(SYS_REBOOT_COLD);
+    pigeon_reboot();
   }
 #endif
 

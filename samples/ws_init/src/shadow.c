@@ -8,7 +8,6 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/logging/log_ctrl.h>
 #include <zephyr/sys/printk.h>
-#include <zephyr/sys/reboot.h>
 
 #include "net/wifi_connection_manager.h"
 
@@ -215,7 +214,7 @@ int shadow_sync(void) {
     pigeon_ws_stop();
 #endif
     wifi_disconnect();
-    sys_reboot(SYS_REBOOT_COLD);
+    pigeon_reboot();
   }
 
   return 0;

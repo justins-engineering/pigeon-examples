@@ -8,7 +8,6 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/logging/log_ctrl.h>
 #include <zephyr/sys/printk.h>
-#include <zephyr/sys/reboot.h>
 
 #include "gnss.h"
 #include "net/connection_manager.h"
@@ -223,14 +222,14 @@ int shadow_sync(void) {
   /* "reboot" is a one-shot command, deliberately excluded from
    * current_config above so it isn't seen as "changed" (and re-fire) on
    * every subsequent poll. Gracefully powers the modem off first
-   * (lte_disconnect() -> lte_lc_power_off()) rather than calling
-   * sys_reboot() directly -- an ungraceful reset trips the nRF91 modem's
-   * reset-loop protection and refuses LTE attach for 30 minutes, see this
-   * repo's CLAUDE.md "Modem reset safety" and connection_manager.c. */
+   * (lte_disconnect() -> lte_lc_power_off()) before rebooting -- an
+   * ungraceful reset trips the nRF91 modem's reset-loop protection and
+   * refuses LTE attach for 30 minutes, see this repo's CLAUDE.md "Modem
+   * reset safety" and connection_manager.c. */
   if (target.reboot) {
     LOG_WRN("Shadow v%d requested reboot; disconnecting and rebooting now", doc.target_version);
     lte_disconnect();
-    sys_reboot(SYS_REBOOT_COLD);
+    pigeon_reboot();
   }
 
   return 0;
