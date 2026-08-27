@@ -652,22 +652,50 @@ failure from a dashboard, which reads `target_version == current_version`,
 and stop the device retrying, since that same equality is its own
 early-return.
 
-### Signing key — do not ship the default
+### Signing key
 
-Same caveat as `../pigeon/README.md`: `sysbuild.conf` here only sets
-`SB_CONFIG_BOOT_SIGNATURE_TYPE_ECDSA_P256=y`, no
-`CONFIG_BOOT_SIGNATURE_KEY_FILE` override, so every `https_init` build in
-this repo today is signed with MCUboot's upstream dev key
-(`bootloader/mcuboot/root-ec-p256.pem`) — a key whose private half is
-public in the open-source MCUboot repo. That's fine for bring-up (this is
-exactly why MCUboot ships it, and it's what makes `imgtool sign` "just
-work" with zero setup below), but it means MCUboot will happily boot an
-image signed by *anyone* using that same well-known key. Before pointing a
-real fleet at a real backend, generate a project key pair with `imgtool
-keygen`, set `CONFIG_BOOT_SIGNATURE_KEY_FILE` to the public half's path in
-`samples/https_init/sysbuild/mcuboot/prj.conf`, and make sure only the
-firmware-upload path on the `dovecote` side (or whatever signs release
-images) ever touches the private half.
+Every sample that builds MCUboot verifies an ECDSA P-256 signature before
+it boots an image, the ESP32-C6 included. That is not the board's own
+default: `esp32c6_devkitc`'s `Kconfig.sysbuild` defaults the choice to
+`BOOT_SIGNATURE_TYPE_NONE`, which leaves MCUboot checking an image hash and
+no signature at all, so a corrupted download is caught and a substituted
+one is not. `samples/wifi_init/sysbuild-mcuboot.conf` assigns
+`SB_CONFIG_BOOT_SIGNATURE_TYPE_ECDSA_P256=y` rather than relying on a
+default, since the board's default is what would otherwise win.
+
+Which key signs it is `samples/mcuboot-signing.cmake`, shared by every
+sample through a one-line `sysbuild.cmake`. A key is a build input, never a
+commit:
+
+```sh
+imgtool keygen -k samples/keys/private/boot-ecdsa-p256.pem -t ecdsa-p256
+```
+
+That path is already in `.gitignore` (`**/keys/private/*`). Point
+`PIGEON_BOOT_SIGNATURE_KEY_FILE` at a PEM elsewhere to override it. Note
+that `CONFIG_BOOT_SIGNATURE_KEY_FILE` wants the **private** PEM: the build
+extracts the public half and compiles that into the bootloader, and
+`imgtool` signs with the private half.
+
+With no key at either location the build still works, and says so:
+
+```
+CMake Warning at samples/mcuboot-signing.cmake:
+  pigeon: no signing key at .../keys/private/boot-ecdsa-p256.pem and
+  PIGEON_BOOT_SIGNATURE_KEY_FILE is unset, so this image is signed with
+  MCUboot's public development key and anyone can forge it. Fine for the
+  bench, never for a device that leaves it.
+```
+
+MCUboot's `root-ec-p256.pem` ships in the open-source MCUboot repository,
+private half and all, which is exactly why it makes bring-up work with zero
+setup and exactly why an image signed with it proves nothing. Before
+pointing a real fleet at a real backend, generate a project key, keep the
+private half off any machine that does not sign a release image, and make
+sure only the firmware-upload path on the `dovecote` side ever touches it.
+
+The ESP32-C6 is a bench target. There are no current plans to put it in the
+field.
 
 ### Fallback / revert behavior
 
@@ -693,6 +721,22 @@ permanent swap — this is what makes a bad update self-healing:
    docs on swap-type "test" vs "permanent" if you want to force a revert
    manually while bench-testing (flash an unconfirmed image and just power
    cycle without ever calling `pigeon_fota_confirm_boot()`).
+
+Step 4 is the bootloader's, and it needs swap-with-revert. Espressif's
+MCUboot port is overwrite-only (`CONFIG_BOOT_UPGRADE_ONLY=y` in
+`bootloader/mcuboot/boot/zephyr/socs/esp32c6_hpcore.conf`), so on the
+ESP32-C6 the staged image replaces the running one and no previous slot
+survives to revert to. Confirming still runs there; what it cannot do is
+make a bad image recoverable without another update. A wrong-key image is
+refused before any of that, by the bootloader, on both boards.
+
+Whatever the dashboard's firmware catalog serves has to be the signed
+artifact sysbuild produced, `zephyr.signed.bin`, not the bare `zephyr.bin`:
+an unsigned or wrongly-signed image now downloads, verifies its sha256, is
+staged, and is then refused at the next boot. The device side is unchanged
+by any of this, and `pigeon`'s FOTA client on the C6 still applies a signed
+image exactly as before, since it writes bytes into the secondary slot and
+lets MCUboot judge them.
 
 **Not yet verified against real hardware or a live backend** as of this
 writing: `dovecote`'s `/device/pigeons/:id/firmware` route (task #23) is
@@ -1013,8 +1057,9 @@ west build --sysbuild -d build_wifi_init_fota -b esp32c6_devkitc/esp32c6/hpcore 
 `CONFIG_PIGEON_FOTA_CURRENT_VERSION` in `fota.conf` ships as a placeholder
 and has to be set to whatever version string the image is uploaded to the
 platform under, since the library compares that string and never reads
-MCUboot's own image header. The images this produces are signed with
-MCUboot's default development key.
+MCUboot's own image header. This build signs with whatever
+`samples/mcuboot-signing.cmake` resolves, and warns at configure time when
+that is MCUboot's public development key.
 
 Separate build dirs per sample (gitignored via the same `/build_*/`
 pattern as `build/`) so neither clobbers `https_init`'s `build/` — the
