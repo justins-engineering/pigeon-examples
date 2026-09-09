@@ -98,8 +98,8 @@ The CoAP and MQTT samples take a pre-shared key here instead of, or beside, the 
 sample's own README names the keys it wants. All of them come back once, from the pigeon's create or
 token-refresh response, and refreshing revokes what it replaces.
 
-WiFi credentials go in `samples/<sample>/boards/esp32c6_devkitc_hpcore.local.conf`, beside that
-board's own conf, and are merged after `prj.local.conf`:
+WiFi credentials go in `samples/<sample>/boards/esp32c6_devkitc_hpcore.local.conf`, merged after
+`prj.local.conf`. Create the `boards/` directory if the sample does not ship one:
 
 ```
 CONFIG_WIFI_CREDENTIALS_STATIC_SSID="<ssid>"

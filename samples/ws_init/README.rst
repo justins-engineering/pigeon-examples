@@ -30,8 +30,7 @@ What you need
 - A signing key for the Feather builds, which boot through MCUboot. Generate
   one with ``imgtool keygen -k <path> -t ecdsa-p256``, keep it outside the
   tree and export ``PIGEON_BOOT_SIGNATURE_KEY_FILE=<path>`` in every build
-  shell. Without it MCUboot's public development key signs the image and the
-  build warns; fine on a bench, never on a device that leaves it.
+  shell. Unset, the build warns and signs with a key anyone can forge.
 
 Configure
 ---------
@@ -50,16 +49,15 @@ token revokes the previous one the moment the new one is issued, so a device
 still running the old build starts failing every request until it is rebuilt
 and reflashed with the new value.
 
-On the ESP32-C6 the WiFi credentials go in a second git-ignored file, beside
-that board's own conf and merged after ``prj.local.conf``: write
+On the ESP32-C6 the WiFi credentials go in a second git-ignored file, in the
+sample's own ``boards/`` directory, creating it if it is not there: write
 ``samples/ws_init/boards/esp32c6_devkitc_hpcore.local.conf``::
 
   CONFIG_WIFI_CREDENTIALS_STATIC_SSID="<ssid>"
   CONFIG_WIFI_CREDENTIALS_STATIC_PASSWORD="<password>"
 
-Keeping them out of ``prj.local.conf`` is what stops them reaching the build log
-of a board that has no WiFi: Kconfig prints the value assigned to a symbol whose
-dependencies are unmet, and that file is merged on every board.
+Keeping them out of ``prj.local.conf`` is what stops a WiFi password reaching the
+build log of every board that has no WiFi; ``docs/esp32c6.md`` says why.
 
 The socket is authenticated with the same endpoint and token as the HTTPS
 connector, reaching ``<endpoint>/ws``. There are no separate WebSocket
