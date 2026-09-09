@@ -154,6 +154,10 @@ Troubleshooting
   non-secure partition, which is why they build size-optimized.
 - native_sim logs one ``Network disconnected`` before ``Network connected``:
   the simulated interface reports its state before it has an address.
+- A Feather or native_sim build log quoting your WiFi password: Kconfig prints
+  the value of a symbol whose dependencies are unmet, and ``prj.local.conf`` is
+  merged on every board. Keep the two WiFi keys out of it unless you are
+  building for the ESP32-C6.
 
 Next steps
 ----------
