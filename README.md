@@ -33,6 +33,18 @@ The board targets behind those columns:
 Only the nRF91 modem has a GNSS receiver, so `asset_tracker` reports a fabricated track elsewhere
 and says so in every reading.
 
+## Prerequisites
+
+- The Zephyr SDK and your host's build dependencies, from Zephyr's
+  [Getting Started Guide](https://docs.zephyrproject.org/latest/develop/getting_started/index.html).
+  Stop after its SDK step; the workspace setup below replaces the rest of that page.
+- `probe-rs`, to flash an nRF9151 Feather over its onboard probe.
+- `nrfutil`, to flash an nRF9160 Feather over a J-Link probe.
+
+Everything else these commands invoke is a Python package that `west packages pip --install`
+brings in below: `imgtool` to sign an image, `pyserial-miniterm` for a board console, `esptool`
+to flash the ESP32-C6.
+
 ## Setup
 
 Two west manifests live in `samples/`, and each needs a topdir of its own because they vendor
@@ -49,6 +61,7 @@ cd pigeon-examples
 python3 -m venv .venv && source .venv/bin/activate
 pip install west
 west update
+west packages pip --install
 git clone https://github.com/justins-engineering/pigeon.git pigeon
 ```
 
@@ -61,6 +74,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install west
 west config manifest.file west-ncs.yml
 west update
+west packages pip --install
 ln -s <path to the pigeon checkout> pigeon
 ```
 
@@ -72,9 +86,10 @@ which `samples/common/app.cmake` adds as an extra Zephyr module, so an edit ther
 the next build with no commit and no `west update`. One checkout serves both topdirs, which is why
 the second names the first's rather than cloning again.
 
-Building for the ESP32-C6 needs two more one-time steps, `west packages pip --install` and then
-`west blobs fetch hal_espressif`. That order matters: the fetcher needs packages the first step
-installs. See [docs/esp32c6.md](docs/esp32c6.md) for what each one is for.
+Building for the ESP32-C6 needs one more one-time step, `west blobs fetch hal_espressif`, which
+fetches the prebuilt WiFi binaries the driver links against. It has to follow the
+`west packages pip --install` above, whose packages the fetcher itself needs. See
+[docs/esp32c6.md](docs/esp32c6.md).
 
 Activate the environment in every terminal that builds:
 
@@ -83,6 +98,11 @@ source .venv/bin/activate
 ```
 
 ## Credentials
+
+A sample talks to a pigeon, the platform's record of one device. Create an account at
+[pidgeiot.com](https://pidgeiot.com), add a flock to group your devices, then add a pigeon to
+that flock. Its detail page carries the endpoint to compile in, and mints the device token,
+which is shown once when the pigeon is created and once more each time you refresh it.
 
 A device's endpoint and token are real secrets. They are compiled in, from a git-ignored file in the
 sample's own directory, and nothing tracked ever carries a value.

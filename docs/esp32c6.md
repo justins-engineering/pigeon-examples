@@ -15,14 +15,12 @@ SSID or password is wrong.
 ## One-time setup beyond `west update`
 
 ```sh
-west packages pip --install
 west blobs fetch hal_espressif
 ```
 
-The first installs `esptool`, which the SoC's own CMake hard-requires and which `pip install west`
-does not pull in, along with the `requests` and `jsonschema` the blob fetcher itself needs. Run it
-first or the fetch fails on a fresh virtualenv. The second fetches the prebuilt WiFi binaries the
-driver links against, which are not git-tracked source.
+This fetches the prebuilt WiFi binaries the driver links against, which are not git-tracked
+source. Run the root README's `west packages pip --install` before it: the fetcher needs the
+`requests` and `jsonschema` it brings in, and the SoC's own CMake hard-requires its `esptool`.
 
 ## Only the default manifest builds this board
 
