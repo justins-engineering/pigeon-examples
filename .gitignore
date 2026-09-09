@@ -37,7 +37,7 @@ log*.txt
 /modules/
 /bootloader/
 /zephyr/
-# No trailing slash: pigeon is a symlink to a local checkout, and a
+# No trailing slash: pigeon may be a symlink to a checkout elsewhere, and a
 # trailing-slash pattern only matches real directories, not symlinks.
 /pigeon
 
