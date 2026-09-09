@@ -39,27 +39,33 @@ Two west manifests live in `samples/`, and each needs a topdir of its own becaus
 incompatible trees. `west.yml` is upstream Zephyr and is the default; `west-ncs.yml` is the nRF
 Connect SDK, which the Feathers need for the modem libraries and the TF-M targets.
 
-The default topdir, for the ESP32-C6 and `native_sim`:
+A clone is already a west workspace: `.west/config` ships with it, so there is no `west init` step
+and `west update` fetches the vendored trees straight away. The default topdir, for the ESP32-C6 and
+`native_sim`:
 
 ```sh
-mkdir pigeon-examples && cd pigeon-examples
+git clone https://github.com/justins-engineering/pigeon-examples.git
+cd pigeon-examples
 python3 -m venv .venv && source .venv/bin/activate
 pip install west
-west init -m https://github.com/justins-engineering/pigeon-examples.git .
 west update
 git clone https://github.com/justins-engineering/pigeon.git pigeon
 ```
 
-A second topdir, for the two Feathers:
+A second clone, switched to the other manifest before its first update, for the two Feathers:
 
 ```sh
-mkdir pigeon-examples-ncs && cd pigeon-examples-ncs
+git clone https://github.com/justins-engineering/pigeon-examples.git pigeon-examples-ncs
+cd pigeon-examples-ncs
 python3 -m venv .venv && source .venv/bin/activate
 pip install west
-west init -m https://github.com/justins-engineering/pigeon-examples.git --mf west-ncs.yml .
+west config manifest.file west-ncs.yml
 west update
 ln -s <path to the pigeon checkout> pigeon
 ```
+
+That `west config` rewrites the tracked `.west/config`, which is the one file a second topdir is
+meant to differ in.
 
 `pigeon` is deliberately not a west project. It is a plain checkout at the top of the workspace,
 which `samples/common/app.cmake` adds as an extra Zephyr module, so an edit there is picked up by
