@@ -140,25 +140,3 @@ to check that signature:
 curl -s https://pidgeiot.com/.well-known/pgp-key.txt | gpg --import
 curl -s https://pidgeiot.com/.well-known/security.txt | gpg --verify
 ```
-
-## Renewing Expires
-
-The document carries an `Expires` date, currently `2027-02-26`, and has to be
-renewed before that date passes, otherwise the document is stale by its own
-terms. Change the date in the unsigned source, then bring the served copy back
-into step with it. If the served document is signed, that means signing it
-again: the signature covers the date being renewed, so editing the served file
-in place would leave a signature that no longer verifies. From the repository
-root:
-
-```sh
-gpg --local-user 2ADE9368178A62EE99B35615DDE1CA3CE883F7B2 --clearsign --yes \
-  --output fancier/public/.well-known/security.txt \
-  fancier/public/.well-known/security.txt.unsigned
-gpg --verify fancier/public/.well-known/security.txt
-```
-
-`--yes` is there because the previous document is still in place and `gpg`
-would otherwise stop to ask before replacing it. If the served document is not
-signed, copy the source over it instead. Either way the unit test above fails
-the build until the two match, so nothing ships half renewed.

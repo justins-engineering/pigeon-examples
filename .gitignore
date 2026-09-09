@@ -19,6 +19,9 @@ log*.txt
 # app.cmake merges both when present.
 *.local.conf
 
+# Agent guidance, local to a working copy
+/CLAUDE.md
+
 # Python venv
 .venv/
 
@@ -38,8 +41,7 @@ log*.txt
 # trailing-slash pattern only matches real directories, not symlinks.
 /pigeon
 
-# Pristine reference copy of the original Nordic NIDD sample this tree was
-# bootstrapped from. Kept on disk locally, not part of this repo.
+# Local reference copy, not part of this repo.
 /nidd-sample/
 
 # Cortex debugging states
