@@ -1,56 +1,21 @@
-# SECONDARY manifest: this workspace's default
-# is west-vanilla.yml (plain upstream Zephyr, see that file and this
-# repo's README/CLAUDE.md). Reconfigure a topdir against this manifest
-# instead only for the nRF91 cellular samples (https_init, coap_tcp_init),
-# whose LTE connectivity genuinely needs the nRF Connect SDK's vendor
-# modules (nrf_modem/nrfxlib, lte_lc, modem_key_mgmt, TF-M _ns targets) --
-# not for ESP32-C6/native_sim/other non-cellular boards, which build
-# against west-vanilla.yml instead.
+# Default manifest: upstream Zephyr, for the ESP32-C6-DevKitC and native_sim.
+#
+# The nRF91 Feathers need the nRF Connect SDK's modem libraries and a forked
+# Zephyr that cannot share a topdir with this one; they build from a second
+# topdir configured against west-ncs.yml.
 manifest:
   remotes:
-    - name: ncs
-      url-base: https://github.com/nrfconnect
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
 
   projects:
-    - name: nrf
-      repo-path: sdk-nrf
-      remote: ncs
-      revision: v3.4.0
-      import:
-         name-allowlist:
-          - cjson
-          - cmsis
-          - cmsis-dsp
-          - cmsis-nn
-          - cmsis_6
-          - hal_nordic
-          - libmodem
-          - littlefs
-          - mbedtls
-          - mcuboot
-          - nrf_hw_models
-          - nrfxlib
-          - oberon-psa-crypto
-          - picolibc
-          - qcbor
-          - segger
-          - tf-psa-crypto
-          - tinycrypt
-          - trusted-firmware-m
-          - zcbor
-          - zephyr
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v4.4.1
+      import: true
 
-  # hal_espressif (Espressif's Zephyr HAL) isn't needed here: wifi_init/
-  # ws_init build exclusively under west-vanilla.yml (which gets
-  # hal_espressif for free via upstream zephyr's own manifest import), and
-  # neither of this manifest's remaining samples (https_init, coap_tcp_init,
-  # both nRF91-only) touch ESP32 at all. This manifest is nRF Connect
-  # SDK/cellular-only now -- see the file-level comment above.
-
-  # pigeon is intentionally not a west project: ./pigeon is a local symlink
-  # (see ../pigeon_module.cmake, which adds it to ZEPHYR_EXTRA_MODULES by
-  # physical path) to the primary pigeon dev checkout, so local edits there
-  # are picked up immediately without a push/west-update round trip.
+  # The pigeon library is not a west project: ../pigeon is a symlink to a
+  # checkout that common/app.cmake adds as an extra module.
 
   self:
     path: samples

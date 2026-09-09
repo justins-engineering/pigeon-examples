@@ -1,0 +1,7 @@
+# Registers samples/boards as a board root for both the application and the
+# sysbuild configure stage, so the out-of-tree nRF9151 Feather needs no
+# -DBOARD_ROOT on the command line.
+name: pigeon-examples
+build:
+  settings:
+    board_root: .
