@@ -8,10 +8,10 @@
 
 LOG_MODULE_REGISTER(main);
 
-/* The platform's root CA. The modem takes PEM; mbedTLS wants it terminated. */
+/* The platform's root CA, terminated because mbedTLS parses PEM as a string. */
 static const char ca_cert[] = {
 #include "GTS_Root_R4.crt.hex"
-    IF_ENABLED(CONFIG_TLS_CREDENTIALS, (0x00))
+    0x00
 };
 
 BUILD_ASSERT(sizeof(ca_cert) < KB(4), "the modem's credential store caps a certificate at 4 KiB");

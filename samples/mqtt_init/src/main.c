@@ -8,10 +8,10 @@
 LOG_MODULE_REGISTER(main);
 
 #if defined(CONFIG_PIGEON_MQTT_AUTH_CERT)
-/* The broker's trust anchor. The modem takes PEM; mbedTLS wants it terminated. */
+/* The broker's trust anchor, terminated because mbedTLS parses PEM as a string. */
 static const char ca_cert[] = {
 #include "broker-ca.pem.hex"
-    IF_ENABLED(CONFIG_TLS_CREDENTIALS, (0x00))
+    0x00
 };
 
 BUILD_ASSERT(sizeof(ca_cert) < KB(4), "the modem's credential store caps a certificate at 4 KiB");
