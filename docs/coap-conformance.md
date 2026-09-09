@@ -1,8 +1,7 @@
 # CoAP conformance rig
 
-`coap_dtls_init` and `coap_tcp_init` speak to `loft`, the platform's CoAP terminator, in production.
-Neither can be pointed at staging: staging runs no terminator, so its `COAP_DEVICE_HOST` is empty
-and there is no `coaps://` endpoint to mint.
+`coap_dtls_init` and `coap_tcp_init` speak to `loft`, the platform's CoAP terminator. There is one
+CoAP endpoint and it is the production one.
 
 The peer to develop against instead is [libcoap](https://libcoap.net)'s `coap-server`, which is the
 stronger check either way. It is a from-scratch third-party implementation of the same RFCs, rather

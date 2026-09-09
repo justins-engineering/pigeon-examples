@@ -29,14 +29,13 @@ are present, never that they are valid; the real platform verifies an Ed25519 si
 request, which is the whole reason the broker is not a trusted proxy. The identity the script uses
 is fixed and fake on purpose. Never point it at real device credentials.
 
-## Two things it settled that a reader inherits
+## Two configuration rules this path depends on
 
 **Keep `CONFIG_PSA_WANT_ALG_GCM` alongside CCM in any pre-shared-key configuration.** A build that
 offers only `TLS_PSK_WITH_AES_128_CCM_8` cannot connect to a broker whose OpenSSL will not select
-it, and that describes every default-configured OpenSSL listener, including ones we do not run. The
-failure is a silent handshake failure rather than a downgrade. `samples/common/boards/tls-psk.conf`
-wants both, and pins no ciphersuite, which is what leaves the constrained-device suite on offer at
-all.
+it, and that describes every default-configured OpenSSL listener. The failure is a silent handshake
+failure rather than a downgrade. `samples/common/boards/tls-psk.conf` wants both, and pins no
+ciphersuite, which is what leaves the constrained-device suite on offer at all.
 
 **Batched telemetry is an HTTPS-connector feature.** `CONFIG_PIGEON_TELEMETRY_BATCH` depends on
 `PIGEON_CONNECTOR_HTTPS`, so on an MQTT build the assignment is silently dropped and telemetry
