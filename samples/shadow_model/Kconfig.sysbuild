@@ -1,0 +1,18 @@
+rsource "../Kconfig.sysbuild.signing"
+
+# A Feather has nothing at address 0 without MCUboot. The ESP32-C6 board
+# defaults to MCUboot, and a single image is enough here.
+choice BOOTLOADER
+	default BOOTLOADER_NONE if BOARD_ESP32C6_DEVKITC
+	default BOOTLOADER_MCUBOOT if SOC_SERIES_NRF91
+endchoice
+
+if BOOTLOADER_MCUBOOT
+
+choice BOOT_SIGNATURE_TYPE
+	default BOOT_SIGNATURE_TYPE_ECDSA_P256
+endchoice
+
+endif
+
+source "share/sysbuild/Kconfig"
