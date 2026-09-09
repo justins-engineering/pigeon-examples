@@ -1,560 +1,157 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this
+repository.
 
-## Project overview
+## What this repo is
 
-`pigeon-examples` holds Zephyr/nRF Connect SDK **sample applications** that exercise `pigeon`, the
-PidgeIoT on-device client library. It's a standalone repo (own git history) whose job is to prove
-`pigeon` actually works on real firmware — the counterpart to `pigeon`'s own unit-level scaffolding.
-`pigeon` itself lives in a sibling checkout at **`~/pigeon`** and is linked in locally (see "The
-`pigeon` module" below), not fetched as a normal west project.
+`pigeon-examples` holds the Zephyr sample applications for `pigeon`, the PidgeIoT device client
+library. Its job is to prove `pigeon` works on real firmware. The library is a sibling checkout at
+`~/pigeon`, linked in rather than fetched.
 
-**When working on anything shadow/auth/connector-shaped here, read `~/pigeon/CLAUDE.md` first** —
-it documents the wire-compat contract with the `~/pidgeiot` backend (dovecote/capsules) that this
-repo's samples must stay consistent with. This file only covers workspace mechanics and sample state.
+Read `~/pigeon/CLAUDE.md` before touching anything shadow-, auth- or connector-shaped: it carries
+the wire contract with the `~/pidgeiot` backend that these samples have to stay consistent with.
 
-## West workspace structure
+Everything under `samples/`, plus `README.md` and `docs/`, is customer-facing. A Zephyr developer
+evaluating the platform reads it. Nothing there names this file, an agent, a task or a date.
 
-**Two-manifest gotcha for scratch workspaces (post task #8, found 2026-07-23):** since
-`west-vanilla.yml` became this topdir's default manifest, do NOT build the NCS flavor in a
-scratch workspace that merely *symlinks* the vendored trees back into this live topdir —
-Zephyr's Kconfig module-dir resolution (notably sysbuild's MCUboot sub-image) walks the
-symlink-resolved real path to the nearest `.west`, finds THIS topdir's config
-(`west-vanilla.yml`), and silently resolves the wrong manifest context
-(`ZEPHYR_NRF_MODULE_DIR` empty → `nrf/modules/mcuboot/.../Kconfig` not found). Hardlink-copy
-the trees into the scratch topdir instead (`cp -al` — instant, no extra disk), with the
-scratch topdir's own `.west/config` naming the flavor you're building.
+## Workspace
 
-This directory *is* the west workspace (`west topdir`), and `samples/` is the manifest ("self")
-repo — the one piece of this tree with its own independent git history in the usual sense of "the
-repo you'd clone." Everything else here is either vendored (gitignored, fetched by `west update`)
-or a small set of local-only support directories:
+The git repository IS the west topdir and `.west/config` is tracked, so a clone needs no
+`west init`. `samples/` is west's manifest self path but is not a git repo of its own.
 
-```
-pigeon-examples/            <- west topdir; this repo's git history covers samples/ + these dotfiles
-  .west/config               # west topdir marker; manifest = { path: samples, file: west.yml }
-  .venv/                      # Python venv (west, pyserial, etc.) — gitignored, `source .venv/bin/activate`
-  .envrc                      # direnv: auto-activates .venv, wires up west shell completion
-  .clang-format, .clangd       # 2-space Google-based style; clangd config for the ARM Zephyr toolchain
-  build/                      # default west build dir — gitignored, see "Build directory conventions"
-  pigeon -> ~/pigeon/          # symlink, NOT a west project (see below)
-  nidd-sample/                 # gitignored (.gitignore) — pristine reference copy of the Nordic NIDD
-                                # sample this workspace was originally bootstrapped from; kept on disk
-                                # locally for comparison, not part of this repo or its build
-  samples/                    # <-- the actual git repo; west manifest self-path
-    west.yml                   # west manifest: pulls sdk-nrf (nrf/) at v3.4.0, which imports
-                                # zephyr/, nrfxlib/, mcuboot/, mbedtls/, etc. via name-allowlist
-    pigeon_module.cmake         # shared by every sample: ZEPHYR_EXTRA_MODULES += ../pigeon
-    https_init/                 # pigeon_init() over HTTPS — the reference/most-developed sample
-    coap_tcp_init/               # pigeon_init() over CoAP-over-TLS/TCP (RFC 8323), mirrors https_init's
-                                  # shadow sync; NCS-manifest sample (unguarded modem/lte_lc.h -- its
-                                  # native_sim variant builds under west.yml, not west-vanilla.yml)
-    coap_dtls_init/              # pigeon_init() over CoAP-over-DTLS/UDP (RFC 7252, PSK + Connection ID)
-                                  # -- the primary constrained-device transport; native_sim variant builds
-                                  # under the DEFAULT vanilla manifest (board-conditional connection
-                                  # manager, wifi_init pattern), nrf9160 flavor under west.yml. Verified
-                                  # e2e against libcoap (see README "CoAP over DTLS" section)
-    shadow_model/                # builds pigeon_shadow_doc/pigeon_shadow_update_request and logs them;
-                                  # no transport, exists to sanity-check the data structures compile/link
-    wifi_init/                   # pigeon_init() over HTTPS on ESP32-C6-DevKitC-1 (WiFi, not LTE);
-                                  # plain polling only, no CONFIG_PIGEON_WS -- see "Other samples" below
-    ws_init/                      # same board/HTTPS connector as wifi_init, plus CONFIG_PIGEON_WS: the
-                                  # dedicated demo of pigeon's persistent WS push channel, split out of
-                                  # wifi_init so WS isn't conflated with the plain-HTTPS-over-WiFi sample
-    mqtt_init/                    # pigeon_init() over MQTT/TLS to the pigeonhole broker (~/pigeonhole):
-                                  # native_sim in TLS-PSK, esp32c6 in certificate mode, both under the
-                                  # DEFAULT vanilla manifest. The retained shadow replaces the poll --
-                                  # see the README's MQTT section and scripts/test/ below
-  scripts/test/                # native-sim-e2e.sh + mock_dovecote.py: the whole device-to-platform MQTT
-                                # path on one workstation (real broker, mocked edge), asserting on what
-                                # arrived rather than on what the device believes it sent
-  nrf/, zephyr/, bootloader/, nrfxlib/, modules/   # vendored by `west update`, gitignored, not this repo
-```
+Two manifests, one topdir each, because they vendor incompatible Zephyr trees:
 
-`.gitignore` is the authoritative list of what's vendored vs. tracked — when in doubt about whether
-something here belongs to this repo, check it before assuming.
+| topdir | manifest | boards |
+|---|---|---|
+| `~/pigeon-examples` | `samples/west.yml`, upstream Zephyr | `esp32c6_devkitc/esp32c6/hpcore`, `native_sim/native/64` |
+| `~/pigeon-examples-ncs` | `samples/west-ncs.yml`, nRF Connect SDK | `circuitdojo_feather/nrf9160/ns`, `circuitdojo_feather_nrf9151/nrf9151/ns` |
 
-### The `pigeon` module
-
-`pigeon` is **intentionally not a west project**. `samples/west.yml` has a comment explaining why:
-linking it as a plain filesystem symlink (`pigeon -> ~/pigeon/`) and adding it to
-`ZEPHYR_EXTRA_MODULES` by physical path (in `samples/pigeon_module.cmake`, included from every
-sample's `CMakeLists.txt`) means local edits in `~/pigeon` are picked up by the very next
-`west build` — no commit/push/`west update` round trip needed. This is the mechanism that makes
-"stay in sync as the Pigeon Agent changes the module" actually work: a plain rebuild here already
-sees their latest working tree, not just their last push.
-
-Consequence: `west update` never touches `pigeon`, and there's no lockfile-style pin recorded
-anywhere in this repo for which `pigeon` commit a given build used. If a build here breaks after a
-`~/pigeon` change, `git -C ~/pigeon log`/`diff` — not anything in this repo — is where to look.
-
-### MCUboot / sysbuild (`https_init`)
-
-`https_init` boots under MCUboot via sysbuild rather than as a plain standalone app:
-
-- `samples/https_init/sysbuild.conf` — turns on sysbuild's MCUboot image (`SB_CONFIG_BOOTLOADER_MCUBOOT=y`,
-  ECDSA P256 signing).
-- `samples/https_init/sysbuild/mcuboot/` — the MCUboot child image's own config, scoped to this
-  sample: `prj.conf` is a checked-in copy of upstream MCUboot's default `prj.conf` (a comment at the
-  top explains why it's a copy and not a symlink — git doesn't like symlinks to paths that don't
-  exist until after `west update`), plus a `boards/circuitdojo_feather_nrf9160.conf`/`.overlay` pair
-  for board-specific MCUboot settings (RTT console instead of UART so serial recovery/newtmgr can
-  still own uart0, `zephyr,code-partition = &boot_partition` so MCUboot links against 0x0 rather
-  than the app's default code partition).
-- Devicetree-based partitioning (migrated off Partition Manager — see git history): the app-image
-  overlay `samples/https_init/boards/circuitdojo_feather_nrf9160_ns.overlay` and the MCUboot-image
-  overlay under `sysbuild/mcuboot/boards/` must independently agree on flash layout, since Zephyr's
-  devicetree-overlay lookup is a cascading fallback (first `boards/<board>.overlay` found wins), not
-  a merge — the two overlays' comments cross-reference each other for exactly this reason. If you
-  touch one, check whether the other needs a matching change.
-- Sysbuild produces per-image build directories under `build/` (`build/https_init/`,
-  `build/mcuboot/`), plus a top-level `build/_sysbuild/` and `build/dfu_application.zip` (the
-  combined DFU-able image bundle) — see "Build directory conventions" below.
-
-### Build directory conventions
-
-- Default build dir is `build/` at the workspace root (`west build -d build ...`), not
-  `samples/<sample>/build`. This matters beyond convention: `~/pigeon/.vscode/settings.json` points
-  clangd at `build/https_init/compile_commands.json` here (via a `pigeon/build` symlink into this
-  repo), so `pigeon`'s own IDE tooling depends on `https_init` continuing to build under plain
-  `build/`. Don't rename or relocate it without checking that symlink.
-- `-p`/`--pristine` forces a clean reconfigure; plain `west build -d build <sample>` reuses the
-  existing `build/` if the sample/board match what's already configured there — check
-  `build/CMakeCache.txt`'s `CACHED_BOARD` if unsure what a stale `build/` was last configured for.
-- Only one sample/board combination is resident in `build/` at a time. Switching sample or board
-  needs a fresh `-d` dir or `--pristine`; there's no per-sample build dir convention here (unlike
-  some Zephyr workspaces).
-- `prj.local.conf` (gitignored, per-sample) holds real device secrets (`CONFIG_PIGEON_ENDPOINT`/
-  `CONFIG_PIGEON_TOKEN`) and is auto-merged by each sample's `CMakeLists.txt` if present — never
-  commit one or paste its contents into a transcript.
-
-### Related CLAUDE.md files, for style/context
-
-- `~/pigeon/CLAUDE.md` — the pigeon module itself: wire-compat contract with `~/pidgeiot`
-  (dovecote/capsules), current transport implementation state, feature-parity gap analysis. Read
-  before touching anything shadow/auth/connector-shaped in the samples here. `pigeon_https.c` and
-  `pigeon_coap.c` are both implemented and wire-compatible with the backend (CoAP-over-TLS/TCP gap
-  closed 2026-07-15); `pigeon_log_backend.c` (dictionary logging) and `pigeon_fota.c` (OTA/MCUboot)
-  landed 2026-07-17/18 — check `git -C ~/pigeon log` for ground truth on current transport/feature
-  state, this file lags in practice.
-- `~/pidgeiot/CLAUDE.md` is now the single up-to-date architecture doc for the backend monorepo
-  (dovecote/capsules/fancier) — `dovecote`/`capsules`/`fancier` still don't have their own per-crate
-  CLAUDE.md files, everything lives in the repo root one.
-
-## `https_init` sample: current state
-
-The most developed sample; treat it as the reference consumer of `pigeon`.
-
-- **`src/main.c`**: brings up LTE (`lte_connect()`), calls `pigeon_init()` with a
-  `PIGEON_CONNECTOR_HTTPS` config, then runs `shadow_loop()` forever (does not return under normal
-  operation).
-- **`src/shadow.c` / `shadow.h`** — device shadow sync: `shadow_sync()` calls `pigeon_shadow_get()`,
-  compares `target_version`/`current_version`, and if they differ, JSON-decodes `target_config` into
-  an app-defined `{log, telemetry_interval, reboot}` struct (the pigeon library treats
-  `target_config` as an opaque string — the app owns its meaning). Applying it: `log` toggles
-  runtime log filtering via `log_filter_set()`, `telemetry_interval` changes the shadow poll period,
-  and `reboot` is a one-shot command (deliberately excluded from the persisted `current_config` so
-  it doesn't refire every poll). `shadow_loop()` re-polls on the shadow's own `telemetry_interval`.
-  Each sync also exercises both device→platform report paths, which dovecote now serves (as of
-  2026-07-15 — see `~/pigeon/CLAUDE.md` for the wire contract): `pigeon_telemetry_set()`/
-  `pigeon_telemetry_flush()` (shared `pigeon_core.c` plumbing over the per-transport
-  `pigeon_transport_report_telemetry` hook; batched since 2026-07-29 — one flush sends every
-  queued key in one POST) reports `uptime_s` + `poll_count` metrics to `/telemetry`, and — only when
-  a new target was actually applied — `pigeon_shadow_report()` POSTs the applied `current_config` +
-  version back to `/shadow` to ack the config change. Distinct endpoints, distinct purposes:
-  telemetry is a latest-value-per-key metric store; the shadow report closes the config-convergence
-  loop (`current_version` is reported by the device, never re-derived server-side).
-- **`src/net/connection_manager.c`** — `lte_connect()`/`lte_disconnect()`, plus CA cert provisioning
-  (`provision_cert()`, modem key storage via `modem_key_mgmt_*` on nRF91 targets since TLS there is
-  socket-offloaded to the modem, or `tls_credential_add()` elsewhere). `lte_disconnect()` explicitly
-  sends `CFUN=0` (`lte_lc_power_off()`, retried up to 3 times) after bringing the interface down,
-  because `conn_mgr_all_if_down()` alone only sends `CFUN=20`, which the modem does *not* count as a
-  graceful shutdown for its reset-loop protection — see "Modem reset safety" below.
-- **MCUmgr DFU**: `prj.conf` enables `CONFIG_MCUMGR`/`CONFIG_UART_MCUMGR`/image-management groups;
-  the `.vscode/tasks.json` "Load image via bootloader" task drives it with `newtmgr -c serial image
-  upload build/https_init/zephyr/zephyr.signed.bin` over `/dev/ttyUSB0`.
-- **`CONFIG_PIGEON`/`CONFIG_PIGEON_CONNECTOR_HTTPS`** are enabled in `prj.conf`; endpoint/token are
-  Kconfig strings supplied via the gitignored `prj.local.conf`, not hardcoded.
-- **Log upload** (`CONFIG_PIGEON_LOG_UPLOAD`, added 2026-07-17): opt-in Kconfig enabling
-  `pigeon`'s dictionary-mode log backend. Hardware-verified end-to-end (15 chunks decoded, byte-matched
-  against serial) — see this repo's README for the full host-side decode flow (`log_dictionary.json`
-  build artifact + `log_parser.py`, which needs `colorama` installed, an undocumented upstream gap
-  fixed here in the README rather than upstream).
-- **FOTA wiring** (`CONFIG_PIGEON_FOTA`, added 2026-07-18): `shadow.c` now also checks the shadow's
-  `firmware` target and calls into `pigeon`'s FOTA client when a new version is offered. `shadow.c`
-  was also given a graceful LTE detach before any FOTA-triggered `pigeon_reboot()`, matching the
-  same `CFUN=0` discipline `connection_manager.c` already used elsewhere. Real hardware e2e
-  (nRF9160) has exercised download → sha256 verify → MCUboot test-swap schedule → shadow
-  convergence report → graceful reboot successfully; what's not yet confirmed is a clean
-  post-reboot re-authentication/convergence (an OTA test image built before a token rotation will
-  401 forever once booted — rebuild, don't just re-upload, after rotating a device's token) and the
-  deliberate unconfirmed-image MCUboot-revert test. See README's FOTA section for the revert-fallback
-  writeup and the default-dev-signing-key risk (documented, not fixed — a real prod deploy needs a
-  real signing key).
-- **A firmware target that did not end up running leaves the shadow unconverged** (`shadow.c` in
-  both `https_init` and `wifi_init`). The report-back after a failed `pigeon_fota_apply()`, or a
-  refusal by the library's attempt budget, used to go out at the shadow's `target_version`, which
-  is exactly the platform's definition of converged: `GET /pigeons/:id/shadow` then answered
-  `target_version == current_version` while `current_config.firmware.version` still named the old
-  image, so a dashboard showed a converged pigeon running firmware it had never booted, and the
-  device's own `target_version == current_version` early return meant it never retried. Because
-  there is at most one attempt per shadow write that way, the library's per-target attempt budget
-  could never be reached by these apps either. The report still goes out, carrying whatever else in
-  the target the device genuinely did apply plus the firmware version it is really running; only
-  the version it is reported AT changes, to the platform's existing `current_version`. Found on the
-  first hardware run of `wifi_init` with FOTA on.
-
-### Modem reset safety
-
-Never reset, reflash, or power-cycle hardware while it's mid-connection — always confirm a graceful
-`CFUN=0` power-off happened first (or let `lte_disconnect()` complete). An ungraceful reset trips the
-nRF91 modem's reset-loop protection and refuses LTE attach for **30 minutes**. This is exactly what
-`lte_disconnect()`'s explicit power-off exists to avoid (see `connection_manager.c` above) — don't
-work around or skip it when scripting flashes/tests.
-
-### Other samples
-
-- **`coap_tcp_init`** — mirrors `https_init`'s structure (`src/shadow.c` is a copy, now back in
-  sync as of `pigeon`'s 82f5233 "Add pigeon_shadow_report() config-ack over HTTPS + CoAP":
-  `pigeon_coap.c` implements `pigeon_shadow_report()` too, so this sample's `shadow_sync()` calls
-  it after applying `target_config`, same as `https_init`'s. `src/net/connection_manager.c` is the same LTE
-  bring-up/graceful-shutdown pattern, minus CA-cert provisioning since PSK credentials are registered
-  by `pigeon_coap.c` itself from `pigeon_init()`'s config). `PIGEON_CONNECTOR_COAP`, speaking
-  CoAP-over-TLS/TCP (`coaps+tcp://`). Boots under MCUboot/sysbuild on `circuitdojo_feather/nrf9160/ns`
-  (`Kconfig.sysbuild`, board-conditioned so a blank/mass-erased chip has something to boot into) while
-  still building for `native_sim` too, which stays on the global `BOOTLOADER_NONE` default and needs no
-  extra flag (verified 2026-07-15; hardware build needed `CONFIG_SIZE_OPTIMIZATIONS` instead of
-  `CONFIG_DEBUG_OPTIMIZATIONS` to fit the MCUboot slot0 partition — see `prj.conf`'s comment).
-  Wire-compatible with `~/pidgeiot` since 2026-07-15 (backend switched to `coaps+tcp://` — see
-  `~/pigeon/CLAUDE.md`). **Known gap, still open:** `pigeon_coap.c`'s PSK registration always calls `tls_credential_add()`, with
-  no `CONFIG_MODEM_KEY_MGMT` branch — on real nRF91 hardware, TLS sockets are offloaded to the modem
-  regardless of that setting (see `connection_manager.c`'s `CONFIG_MODEM_KEY_MGMT` comment), so PSK
-  credentials never reach the modem's actual credential store there. Documented in this sample's
-  `boards/circuitdojo_feather_nrf9160_ns.conf`; a `~/pigeon`-side fix (a `modem_key_mgmt_write()` path
-  for PSK) is needed before real-hardware CoAP auth will work, not something to patch from this repo.
-- **`shadow_model`** — smallest sample; just builds/logs `pigeon_shadow_doc`/
-  `pigeon_shadow_update_request`, no network transport. Good smoke test that the shared data
-  structures still compile after a `pigeon` header change, independent of any connector work.
-- **`asset_tracker`** (added 2026-07-24) — `https_init`'s HTTPS connector plus the nRF91's built-in
-  GNSS on a Circuit Dojo nRF9151 Feather, reporting `gps_lat`/`gps_lon`/`gps_alt_m`/`gps_speed_mps`/
-  `gps_heading_deg`/`gps_sats`/`gps_fix_quality` as ordinary numeric telemetry (dovecote needed zero
-  backend changes — telemetry is already schemaless key/value). LTE/GNSS coexistence relies entirely
-  on the modem's own scheduling (`CONFIG_LTE_NETWORK_MODE_LTE_M_GPS` puts GPS in the system-mode
-  bitmask, same mechanism nRF's own `nrf/samples/cellular/gnss` reference sample uses) rather than
-  manual `CFUN` toggling — no coexistence logic lives in this sample's own code at all.
-  `gps_sats`/`gps_fix_quality` are reported every poll even with no fix (expected indoors), so a
-  dashboard can tell "GNSS is trying, 0 sats" apart from "device never attempted a fix" instead of
-  both collapsing to no data. `CONFIG_ASSET_TRACKER_SIM_GPS` (off by default) substitutes a
-  synthetic circular track (always reporting `gps_fix_quality=2`, never `1`, so it can never be
-  mistaken for a real fix) for indoor/CI demos where GNSS will very likely never converge — the
-  circular-track math was independently verified via a standalone haversine-distance check before
-  being built into firmware. Builds for both `circuitdojo_feather_nrf9151/nrf9151/ns` and (added
-  2026-07-27, task-driven pivot once it turned out the GPS antenna was physically on the 9160)
-  `circuitdojo_feather/nrf9160/ns` — both via sysbuild/MCUboot (added the same day: a plain
-  non-sysbuild `CONFIG_BUILD_WITH_TFM=y` build hard-faulted immediately on real nRF9160 silicon, PC
-  locked at `0xEFFFFFFE`, confirmed via a real J-Link register read — this board's TF-M needs
-  sysbuild orchestrating it, same as `https_init`/`embedded-departure-board` on the same hardware).
-  Also needed `CONFIG_MODEM_ANTENNA_AT_COEX0` (Nordic's `modem_antenna` library only defaults this
-  GNSS LNA-gating AT command on for Nordic's own DK/Thingy91 boards, not Circuit Dojo's — added the
-  value Circuit Dojo's own reference GPS sample uses) and an explicit
-  `lte_lc_func_mode_set(LTE_LC_FUNC_MODE_ACTIVATE_GNSS)` in `gnss.c` (`CONFIG_LTE_NETWORK_MODE_LTE_M_GPS`
-  only sets modem *system* mode, not functional mode — every `nrf_modem_gnss_*` call failed
-  `-NRF_EACCES` without it). Task #52 (same day): `main.c` wraps the initial `lte_connect()` in a
-  bounded retry-with-backoff, `pigeon_reboot()`-ing after all rounds fail, since a boot that hits the
-  nRF91 modem's 30-minute reset-loop restriction (see "Modem reset safety" below) used to just
-  return and sit fully idle forever with no recovery path — a real, repeatedly-observed failure mode
-  during this same bring-up session. Both boards' overlays rebalance slot0 to 128 KB secure/320 KB
-  nonsecure (same mechanism `https_init`'s overlay uses, different reason — this sample's own
-  footprint). Also turns on `CONFIG_PIGEON_REBOOT_ON_FATAL`/`CONFIG_PIGEON_WATCHDOG` (task #45) — a
-  field asset tracker is the poster child for needing unattended wedge recovery.
-
-  **Hardware-verified 2026-07-27** on a real Circuit Dojo nRF9160 Feather with a real GPS antenna
-  attached, indoors: booted once, left running unattended for over an hour, LTE/GNSS/telemetry all
-  cycling cleanly the whole time — and GNSS acquired an actual indoor fix repeatedly (`gps_fix_quality=1`,
-  up to 6 satellites tracked, alternating with `gps_sats=0` stretches as signal came and went, all
-  confirmed both via live RTT and the real staging backend). A real *outdoor* fix was not separately
-  exercised (expected to be easier, not yet measured). Chasing this down cost several hours to an
-  entirely self-inflicted debug-tooling problem — see the README "GNSS asset tracker" section's
-  "Debug-tooling lesson learned the hard way" subsection before doing further real-hardware debugging
-  on this or any other cellular sample: rapid-cycling `nrfjprog`/probe connections against a live
-  target produces phantom stalls and corrupted reads that look exactly like firmware bugs.
-- **`mqtt_init`** (added 2026-08-25) -- `pigeon`'s MQTT connector against **pigeonhole**, the
-  platform's MQTT broker (`~/pigeonhole`, whose `docs/design.md` is the authority for the topic
-  map and the auth model). Two board flavors on `coap_dtls_init`'s board-conditional pattern:
-  `native_sim/native/64` in TLS-PSK against a broker on this workstation, and
-  `esp32c6_devkitc/esp32c6/hpcore` in certificate mode over WiFi, verifying an all-ECDSA chain
-  against ISRG Root X2 (`cert/isrg-root-x2.pem`, so no RSA anywhere in that build).
-  `overlay-cert-native-tls.conf`/`overlay-psk-native-tls.conf` let either board run the other
-  mode; `-DPIGEON_MQTT_CA_FILE=` repoints a certificate build at a different trust anchor.
-  Structurally like the other samples except in what the shadow costs: the target arrives as a
-  RETAINED publish and `pigeon_shadow_get()` serves it locally, so `shadow_loop()`'s periodic
-  pass is the telemetry tick and a dashboard write collapses the wait via
-  `PIGEON_EVENT_SHADOW_UPDATE`. `CONFIG_MQTT_INIT_PIGEON_ID` is a real credential-shaped value
-  (the CONNECT client id and username, and the PSK identity), so it belongs in
-  `prj.local.conf` with the endpoint and secret. **`scripts/test/native-sim-e2e.sh` is the
-  verification of record** -- both auth modes green 2026-08-25 against the broker's own tree --
-  and it found a broker-side defect the broker's own tests could not (no TLS 1.2 certificate
-  ciphersuites, since every check that passed had let OpenSSL choose 1.3; fixed in pigeonhole,
-  see the README). It also closed the platform's open
-  `TLS_PSK_WITH_AES_128_CCM_8` question, in two steps. First the device half: the PSK build's
-  ClientHello does carry `0xC0A8` (read back via `getsockopt(TLS_CIPHERSUITE_LIST)`) while the
-  broker still selected `0x00A8` GCM, and the measured cause (README has the probe table) was
-  OpenSSL's default security level dropping CCM8 at selection time while leaving it in the
-  parsed list. The broker then lowered that floor, scoped to hellos offering the suite, and this
-  sample now negotiates `0xC0A8` against it with nothing changed here -- so the
-  constrained-device suite is exercised end to end, offered by a real mbedTLS client and read
-  back on-device by code point.
-  Two traps recorded there: `0x00A8` is GCM, not CCM8, one transposed byte from the wrong
-  conclusion; and `openssl s_server` exits on stdin EOF, which in a script is indistinguishable
-  from a failed handshake and is what made CCM8 look unnegotiable on this host. ESP32-C6 is build-verified only; the bench board is queued behind loft's CoAP
-  regression pass.
-- **`wifi_init` / `ws_init`** (added 2026-07-19, task #27; `CONFIG_PIGEON_WS` landed and
-  hardware-verified 2026-07-20, task #33; split into two samples 2026-07-21, task #37) —
-  ESP32-C6-DevKitC-1 board bring-up. Originally one sample (`wifi_init`) that grew `CONFIG_PIGEON_WS`
-  in place; per user directive (task #37), WS must never be the thing a reader has to opt *out* of to
-  see plain HTTPS-over-WiFi, and it deserved its own transport-focused demo the way `https_init`/
-  `coap_tcp_init` are for theirs — so the WS-carrying sample was renamed to `ws_init` (`git mv`,
-  history preserved) and a fresh, WS-free `wifi_init` was written alongside it, sharing the
-  board-bring-up code (`wifi_connection_manager.c/h`, cert, sysbuild/CMake boilerplate — literal
-  copies, same convention as `coap_tcp_init` copying `https_init`'s `shadow.c`) but with
-  `shadow.c`/`shadow.h`/`main.c` stripped of every `#if defined(CONFIG_PIGEON_WS)` block rather than
-  just Kconfig'd off, and `prj.conf` dropping `CONFIG_PIGEON_WS`/`CONFIG_PIGEON_SHELL` and every
-  Kconfig bump that existed only for WS+HTTPS concurrency (`CONFIG_NET_SOCKETS_TLS_MAX_CONTEXTS`,
-  `CONFIG_NET_MAX_CONN`, `CONFIG_PSA_WANT_ALG_SHA_1`) or WS-specific memory sizing (a smaller,
-  reasoned-not-independently-measured `CONFIG_MBEDTLS_HEAP_SIZE`, see that file's comments). Both
-  build clean (`west build` exit 0) post-split: `wifi_init` 9.62% flash/55.01% SRAM, `ws_init`
-  10.59% flash/70.18% SRAM. `ws_init` carries all of this sample's real-hardware history from before
-  the split — verified end-to-end on real hardware against staging: WS connect, `shadow_update` push
-  delivered in ~1s of a dashboard write, telemetry-over-WS in ~10ms (vs. ~10s over HTTPS), and a live
-  socket-steal recovery (rival connection closes this device's socket with 4009, device reconnects
-  and reclaims the slot in ~1s — see `~/pigeon/CLAUDE.md`'s `pigeon_ws_teardown()` writeup for the
-  context-leak bug this test caught). `wifi_init` has since been run on the same board against
-  staging in its own right, and gained the firmware-update half it never had: `shadow.c` decodes the
-  shadow's `firmware` key, confirms the running image on a healthy sync, gates on the library's
-  per-target attempt budget, applies, and reboots into what it staged, all of it compiled in only
-  under `CONFIG_PIGEON_FOTA`. That build is opt-in through two tracked fragments,
-  `samples/wifi_init/fota.conf` (the FOTA symbols plus the settings/NVS backend resume and the
-  budget persist through) and `samples/wifi_init/sysbuild-mcuboot.conf` (one line, overriding
-  `sysbuild.conf`'s `SB_CONFIG_BOOTLOADER_NONE`), so the default build stays a bootloader-less
-  single image anyone can flash without a signing key. **MCUboot needed no port work at all** under
-  `west-vanilla.yml`: upstream Zephyr builds its own esp32c6 port and the board's default partition
-  table already carries `boot`/`slot0`/`slot1`/`storage`. Two build-config values in that fragment
-  are mitigations rather than fixes, and are labelled as such where they live: a sustained download
-  eventually fails a WiFi-adapter allocation and aborts inside Espressif's timer shim, so the
-  general heap is larger and the chunk size far bigger (about 25 connections per image instead of
-  400, which also matters because one TLS handshake on this SoC costs roughly nine seconds), with
-  `CONFIG_PIGEON_REBOOT_ON_FATAL` turning the remaining case from a halted board into one that
-  reboots and resumes. Separately, `CONFIG_NET_MAX_CONN` had to leave the tree default: the two
-  static DNS resolvers hold a slot each, so the telemetry POST after a shadow GET failed `-2` on
-  every poll until it was raised.
-  `samples/west.yml`'s `hal_espressif` revision was corrected to
-  `b7953b8019361d09e613f7011d2ccc41b984d087` (a prior pin referenced a commit that doesn't exist —
-  sourced the fix from this workspace's own vendored `zephyr/west.yml`).
-
-  **Board/native-stack bring-up gaps found getting from "build-verified" to "works on real
-  hardware/real network"** — every one of these was invisible to compile-time checks, and none of
-  them exist in the nRF91 samples (`https_init`/`coap_tcp_init`) because that hardware offloads TLS
-  and the modem's own stack to a cellular modem instead of exercising Zephyr's native
-  WiFi/TCP/mbedTLS path. This list is the single most useful thing here for the next non-cellular
-  board bring-up — read it before assuming a nRF91 pattern carries over. All apply to both
-  `wifi_init` and `ws_init` post-split (they share the same `wifi_connection_manager.c`/TLS/PSA
-  config) except #5 and #11, which are WS-specific and live only in `ws_init`'s `prj.conf` now:
-
-  1. **No WiFi-join trigger**: `conn_mgr_all_if_connect()` alone is a no-op — it doesn't actually
-     join a network. Fixed by firing `NET_REQUEST_WIFI_CONNECT_STORED` explicitly
-     (`wifi_connection_manager.c`).
-  2. **Join flakiness**: real hardware showed the join alternating between a few seconds and a full
-     30s timeout, run to run. Fixed with a retry loop around the connect request.
-  3. **No DNS resolver wired up**, and a related name-length gap in the resolver config — endpoint
-     hostname resolution silently failed without it.
-  4. **No native TCP support enabled** — WiFi/native sockets need their own Kconfig path turned on
-     that the nRF91 modem-offloaded samples never needed.
-  5. **`CONFIG_NET_SOCKETS_TLS_MAX_CONTEXTS` defaults to 1**, not enough for HTTPS and WS to hold
-     concurrent TLS contexts — bumped to 3.
-  6. **No PEM cert parsing enabled** — needed for the CA cert to be usable at all on this stack.
-  7. **GTS Root R4 CA bundle**: the two-cert bundle's second (RSA cross-signed) cert made
-     `mbedtls_x509_crt_parse()` mask a real per-cert parse failure (`-0x2100`, RSA sig-alg OID
-     unrecognized — `PSA_WANT_KEY_TYPE_RSA_KEY_PAIR_BASIC` needs `_IMPORT`/`_EXPORT`/`_GENERATE`/
-     `_DERIVE`, not just `_PUBLIC_KEY`) behind a generic "+1 cert failed" count. Trimmed the bundle to
-     just the leaf CA cert after confirming it alone parses and is cryptographically sufficient —
-     trade-off documented in the cert file: if Google rotates/revokes this exact R4 cert before the
-     RSA cross-sign path is separately fixed, this sample's TLS chain breaks until the file is
-     updated again.
-  8. **SNI never emitted** (`CONFIG_MBEDTLS_SSL_SERVER_NAME_INDICATION` never set) — root cause of a
-     `-0x7780` TLS handshake fatal alert against the real edge (Cloudflare) endpoint, found via
-     byte-for-byte ClientHello comparison against a working `openssl s_client` connection.
-  9. **mbedTLS's own dedicated heap unwired** (`CONFIG_MBEDTLS_ENABLE_HEAP`) — a compounding gap
-     found in the same handshake once SNI was fixed.
-  10. **Missing PSA key-generation/derivation wants**: `PSA_WANT_KEY_TYPE_ECC_KEY_PAIR_GENERATE`
-      (ECDHE key generation) and `PSA_WANT_ALG_TLS12_PRF`/`_HMAC`/`KEY_TYPE_HMAC` (TLS1.2 PRF) — both
-      needed for the handshake to complete once SNI/heap were fixed.
-  11. **`PSA_WANT_ALG_SHA_1` missing** — RFC 6455's WS upgrade handshake hashes `Sec-WebSocket-Key`
-      with SHA-1; without this, `websocket_connect()` failed with `-71`/EPROTO even though HTTPS
-      (which doesn't need SHA-1) already worked on the same hardware.
-
-  All eleven were root-caused the same way: a throwaway `native_sim` + NSOS (offloaded real
-  networking, no TAP/root setup needed) harness exercising the real `pigeon` code paths against the
-  real staging server, never guessed from static analysis alone.
-
-  **Memory sizing** (evidence-based, not guessed; `ws_init`-specific, since it's the concurrent-
-  HTTPS+WS case — `wifi_init` reuses the smaller "HTTPS alone" measurement from the same round
-  instead, see its `prj.conf`): `CONFIG_MBEDTLS_HEAP_SIZE` bumped to 96KiB after measuring a real
-  concurrent HTTPS+WS peak of 52.8KiB via `mbedtls_memory_buffer_alloc_max_get()` in the same
-  native_sim harness (which itself needed `CONFIG_NET_SOCKETS_TLS_MAX_CONTEXTS=3` — at the tree
-  default of 1, concurrent HTTPS+WS fails at `tls_context_alloc()`'s pool before ever reaching
-  mbedTLS's own allocator, hiding the true number). Recurring
-  `esp32c6_wifi_adapter: memory allocation failed` warnings on real hardware are a separate,
-  unmeasurable-via-native_sim pool — didn't block the WS milestone or the socket-steal test above,
-  but turned out NOT to be non-fatal under a long enough soak: task #15's follow-up soak (30-60min+,
-  past this milestone's short-run window) caught a real hard panic at 42-60min uptime, root-caused to
-  a rare assert inside Espressif's closed-source `libnet80211.a` WiFi MAC blob (not a heap-sizing
-  issue — two separate soaks with `sys_heap_runtime_stats_get()`/`malloc_runtime_stats_get()`
-  instrumentation, added permanently as `ws_init/src/heap_monitor.c`, ruled out resource exhaustion
-  in either plausible heap). Mitigated task #45 via `pigeon`'s `CONFIG_PIGEON_REBOOT_ON_FATAL` (primary — a
-  `k_sys_fatal_error_handler()` override, hardware-verified to reboot in ~200ms on a forced fault
-  instead of hanging forever) and `CONFIG_PIGEON_WATCHDOG` (secondary, for silent non-fatal liveness
-  stalls) — see `~/pigeon/CLAUDE.md` for the full writeup and this repo's own
-  `docs/upstream-issues/` for two drafted-not-posted upstream reports (the `libnet80211.a` crash
-  trace, and a separate Zephyr `wdt_esp32.c` ms→ticks driver bug task #45's verification found along
-  the way).
-
-### Native-sim gotcha: no real modem
-
-`connection_manager.c` (both `https_init` and `coap_tcp_init`) guards its graceful-shutdown
-`lte_lc_power_off()` call behind `!IS_ENABLED(CONFIG_BOARD_NATIVE_SIM)`. Without that guard the link
-fails outright on `native_sim` — `CONFIG_LTE_LINK_CONTROL` isn't available on that SoC (no real modem
-to control), so the symbol doesn't exist to link against. This was caught by actually linking (not
-just reading Kconfig), since the failure is a linker error, not a compile error — Kconfig alone won't
-show it. If you add another sample with LTE bring-up, carry this guard over too.
-
-### native_sim variants for every non-GNSS sample (task #54, 2026-07-27)
-
-Prior state: `shadow_model` built and ran but was a silent no-op (task #53, fixed in `~/pigeon`
-`pigeon_init()` — the endpoint/token guard fired even when no connector was ever selected);
-`coap_tcp_init` built but was never run-verified; `wifi_init`/`ws_init` failed to *link* on
-`native_sim` (`net_mgmt_NET_REQUEST_WIFI_CONNECT_STORED` undefined — no WiFi L2 there); `https_init`
-didn't build at all for `native_sim` (MCUboot/nrfxlib). All five now have a working `native_sim`
-variant, run-verified against a real backend (staging for `coap_tcp_init`/`wifi_init`/`ws_init`/
-`https_init`'s new provisioning, matching this workspace's normal `prj.local.conf` convention —
-never the *existing* hardware `prj.local.conf` files, see the incident note below).
-
-This environment has no passwordless `sudo`, ruling out the classic TAP/`zeth` native networking path
-(`net-tools/net-setup.sh` needs root plus NAT to reach anything off-host). Every fix below instead
-uses **NSOS** (`CONFIG_NET_NATIVE_OFFLOADED_SOCKETS`, "Native Simulator offloaded sockets") — calls
-straight into the host's own BSD socket API, so DNS/routing/connect just work with zero host setup,
-matching upstream Zephyr's own `samples/net/sockets/http_get/overlay-nsos.conf` pattern. Two fixes
-needed by every sample that uses it:
-
-- **conn_mgr never reaches `NET_EVENT_L4_CONNECTED`** unless the interface also carries an IP
-  address — NSOS's `CONNECTIVITY_SIM` interface has no L2 and never runs DHCP. Confirmed against
-  Zephyr's own `tests/net/conn_mgr_nsos`, which assigns a dummy address for exactly this reason
-  before triggering its own connect. Each connection manager now does the same (`192.0.2.1`, never
-  used for real routing — NSOS bypasses Zephyr's IP stack entirely).
-- **`wifi_init`/`ws_init`** needed a whole second connection-manager source file
-  (`src/net/native_sim_connection_manager.c`, board-conditionally selected in `CMakeLists.txt`
-  instead of `wifi_connection_manager.c`) rather than an in-place guard, since there's no WiFi
-  interface to fall back to at all — it's the same generic `conn_mgr_all_if_up()`/`_connect()`
-  pattern `https_init`/`coap_tcp_init`'s `connection_manager.c` already used for LTE. Every TLS/PSA
-  fix `wifi_init`'s real-ESP32-C6 bring-up already found (SNI, mbedTLS heap wiring, ECDHE key
-  generation, TLS1.2 PRF, ...) carried over unchanged, since none of it was WiFi-specific.
-
-**`coap_tcp_init`**: builds, runs, completes native_sim/NSOS network bring-up, resolves DNS, and
-attempts the real TLS/TCP connect — which cleanly times out (`-116`/`ETIMEDOUT`, ~136s of device
-uptime) rather than completing a handshake. This is expected, not a bug: dovecote only stores the
-`coaps+tcp://` endpoint string as pigeon metadata (`build_coap_endpoint`) and has no actual CoAP
-protocol listener anywhere in the Worker. A device-side Kconfig change can't route around a backend
-that was never listening.
-
-**`https_init`**: needed sysbuild's MCUboot image turned off at the command line
-(`-DSB_CONFIG_BOOTLOADER_NONE=y` — MCUboot's crypto build asserts targeting the native/POSIX SoC,
-`nrfxlib/common.cmake` has never heard of it), plus every FOTA/MCUmgr/ARM-only Kconfig symbol that's
-normally fine in `prj.conf` moved out into `boards/circuitdojo_feather_nrf9160_ns.conf` — this
-workspace's build treats an assigned-but-dependency-unsatisfied symbol as a **fatal** Kconfig warning
-(task #8), not a silent no-op, so leaving e.g. `CONFIG_PIGEON_FOTA_CURRENT_VERSION` or
-`CONFIG_FAULT_DUMP` (ARM-only) generically assigned broke the native_sim configure step outright.
-Real hardware's TLS is offloaded to the nRF91 modem, so `boards/native_sim_native_64.conf` also
-carries the full software mbedTLS/PSA stack `wifi_init` already proved out, plus its own
-`CONFIG_PSA_WANT_KEY_TYPE_RSA_KEY_PAIR_IMPORT` (this sample's CA bundle is Google's full 2-cert
-bundle including the legacy RSA cross-sign, unlike `wifi_init`'s trimmed one) and a
-`CONFIG_NET_SOCKETS_TLS_MAX_CONTEXTS`/`CONFIG_MBEDTLS_HEAP_SIZE` bump (the default single TLS
-context/64KiB heap intermittently failed once `CONFIG_PIGEON_LOG_UPLOAD`'s own TLS socket contended
-with the shadow-fetch one). Verified against a real staging pigeon: shadow GET succeeds, telemetry
-POST lands (`GET /pigeons/:id/telemetry` confirms it), reproduced across multiple runs. See README's
-"Building a sample" section for the exact command.
-
-**Incident, logged for the record**: mid-task, a `ws_init` native_sim run was built with that
-sample's *existing* `prj.local.conf` — which turned out to be a real production pigeon
-(`ws-prod-check-c6`) actively reporting from live ESP32-C6 hardware (climbing `uptime_s` every ~70s
-right up to the run). Since dovecote enforces one WS socket per pigeon (rival connection steals the
-slot), this likely knocked the real device off its socket. Flagged to the team lead immediately; that
-file was never modified, and every subsequent native_sim run (including `wifi_init`/`https_init`'s
-existing hardware `prj.local.conf` files) used a **freshly-provisioned staging-only pigeon** passed
-via `-DEXTRA_CONF_FILE=<scratch-path>` instead, deliberately not the sample's own gitignored file.
-**Lesson for next time**: a sample's existing `prj.local.conf` may belong to live hardware — always
-provision a dedicated pigeon for a fresh transport/network variant rather than assuming an existing
-local conf is safe to reuse, even (especially) when it "just works."
-
-**Scratch-workspace gotcha, worth repeating beyond the "Two-manifest gotcha" note above**: `cp -al`
-hardlink-copying `samples/` into a scratch topdir (not just the vendored trees) means an edit to the
-*live* repo silently stops appearing in the scratch copy the moment it's saved — Edit/Write tools do
-a replace-and-rename, which breaks that one file's hardlink while every untouched file stays in sync.
-Symptom: a board conf edit that CMake's own `CONF_FILE` cache variable correctly lists, yet the
-resulting `.config` never reflects. Fix: `rm -rf` and re-`cp -al` `samples/` fresh before every build
-that follows a real-repo edit — cheap and instant, and confirmed to actually resolve it (diff the
-scratch copy against the live file first if in doubt).
-
-## Build instructions
+The NCS topdir is not a checkout: its `samples/` is a hardlink copy (`cp -al`) of this one. After
+editing a sample here, refresh only that sample's directory there:
 
 ```sh
-# One-time setup
-python3 -m venv .venv && source .venv/bin/activate
-pip install west
-west init -l samples
-west update
-
-# Every session
-source .venv/bin/activate   # or let direnv's .envrc do it
+rm -rf ~/pigeon-examples-ncs/samples/<sample>
+cp -al ~/pigeon-examples/samples/<sample> ~/pigeon-examples-ncs/samples/<sample>
 ```
 
-`shadow_model` has no bootloader and builds for `native_sim` for fast local compile checks
-(`coap_dtls_init`'s and `coap_tcp_init`'s own `native_sim` flavors, and `coap_dtls_init`'s ESP32-C6
-flavor, stay bootloader-free the same way — see "Other samples" above for why their nRF9160 flavor
-differs):
+Editing a file breaks its hardlink, since Edit and Write replace and rename, while every untouched
+file stays in sync. The symptom is an edit CMake correctly lists in `CONF_FILE` that `.config`
+never reflects.
+
+Never build the NCS flavor in a scratch topdir that symlinks the vendored trees back here. Kconfig
+resolves the symlink to the nearest `.west`, finds this topdir's config, and silently builds
+against the wrong manifest with `ZEPHYR_NRF_MODULE_DIR` empty.
+
+`pigeon` is deliberately not a west project: `common/app.cmake` adds `<topdir>/pigeon` to
+`ZEPHYR_EXTRA_MODULES` by path, so an edit in `~/pigeon` is picked up by the next build. Nothing
+here records which `pigeon` commit built what, so `git -C ~/pigeon log` is where a build that broke
+without a change here is explained.
+
+## samples/ layout
+
+- `common/app.cmake`, included by every sample **before** `find_package(Zephyr)`: adds `../pigeon`
+  as an extra module, appends the board-family fragment matching `${BOARD}`, appends
+  `common/boards/tls-<shape>.conf` for each shape a sample names in `SAMPLE_TLS` (`verify`, `psk`),
+  and merges `prj.local.conf` then `boards/<board>.local.conf`. A sample with no transport sets
+  `SAMPLE_NETWORK OFF` before including it.
+- `common/net.cmake`, included **after** `project()`: compiles one bring-up source, `net/lte.c` on
+  the nRF91, `net/wifi.c` under `CONFIG_WIFI`, `net/native_sim.c` under NSOS.
+- `common/net/net_connect.h`: `net_prepare()`, `net_connect()`, `net_disconnect()`,
+  `net_install_ca()`. `net_prepare()` exists because a modem reaches its credential store over AT
+  commands that need the modem library running and the modem offline, so the order in every
+  sample's `main()` is prepare, `pigeon_init()`, connect.
+- `common/boards/`: `nrf91.conf`, `nrf9151.conf`, `esp32c6.conf`, `native_sim.conf`,
+  `tls-verify.conf`, `tls-psk.conf`.
+- `zephyr/module.yml` registers `samples/boards` as a board root for the application and sysbuild
+  stages, so the out-of-tree nRF9151 needs no `-DBOARD_ROOT`.
+- `Kconfig.sysbuild.signing` and `mcuboot-signing.cmake`: one signing-key symbol fed to both
+  images, and the warning when `PIGEON_BOOT_SIGNATURE_KEY_FILE` is unset.
+- A sample is `src/main.c` plus `src/shadow.c` and whatever else is its lesson, `prj.conf`,
+  `boards/` entries only for what it needs beyond the family fragment, `Kconfig.sysbuild`,
+  `sysbuild.cmake` and `README.rst`.
+
+## The samples
+
+Every sample builds for all four boards except `wifi_init`, which is ESP32-C6 and `native_sim`
+only.
+
+- `shadow_model`: the shadow structs with no transport. `CONFIG_PIGEON` stays off, so it is the
+  smoke test that the shared data structures still compile after a `pigeon` header change.
+- `https_init`: the reference port. HTTPS polling, log upload, FOTA through MCUboot. Copy its
+  `CMakeLists.txt` shape for a new sample.
+- `ws_init`: HTTPS plus `CONFIG_PIGEON_WS`, the persistent push channel, plus the WS-riding
+  diagnostic shell and `src/heap_monitor.c`.
+- `coap_dtls_init`: CoAP over DTLS/UDP with a pre-shared key and RFC 9146 Connection ID. The
+  primary constrained-device transport.
+- `coap_tcp_init`: the RFC 8323 TLS/TCP sibling. Every exchange opens its own session.
+- `mqtt_init`: one persistent session to the `pigeonhole` broker (`~/pigeonhole`, whose
+  `docs/design.md` is the authority for the topic map and auth model). The target shadow arrives
+  as a retained publish, so the periodic pass is the telemetry tick.
+- `asset_tracker`: GNSS position as telemetry. `src/gnss.c` talks to `nrf_modem_gnss`;
+  `src/gnss_sim.c` fabricates a track everywhere else and reports `gps_fix_quality=2`, never 1.
+- `wifi_init`: WiFi bring-up with the HTTPS connector. Firmware updates are opt-in through
+  `fota.conf` plus `sysbuild-mcuboot.conf`, which go together.
+
+## Credentials
+
+- `samples/<sample>/prj.local.conf`: endpoint, token, PSK. Git-ignored, merged by `app.cmake`.
+- `samples/<sample>/boards/<board>.local.conf`: credentials only one board has, merged after the
+  above. WiFi keys live here and nowhere else, because Kconfig prints the value assigned to a
+  symbol whose dependencies are unmet, so a WiFi password in `prj.local.conf` reaches the build log
+  of every board without WiFi.
+
+Never print, echo, commit or paste the contents of either, or of anything under `samples/keys/`.
+Reference them by path.
+
+**A sample's existing `prj.local.conf` may belong to live hardware.** One of them once pointed at a
+production pigeon that was actively reporting, and a `native_sim` run stole its WebSocket. Provision
+a dedicated pigeon and pass it with `-DEXTRA_CONF_FILE=<scratch path>`, or override single symbols
+with `-DCONFIG_...`, rather than reusing a file that "just works".
+
+## Building
 
 ```sh
-west build -d build samples/shadow_model -b native_sim/native/64
-./build/zephyr/zephyr.exe
+source ~/pigeon-examples/.venv/bin/activate   # both topdirs use this venv
+export PIGEON_BOOT_SIGNATURE_KEY_FILE=~/pigeon-examples/samples/keys/private/boot-ecdsa-p256.pem
+west build -p always -d build_<what> -b <board target> samples/<sample>
 ```
 
-`https_init` boots under MCUboot via sysbuild (`sysbuild.conf`), and MCUboot doesn't support the
-native/`native_sim` SoC (nrfxlib's crypto build asserts on a missing `GCC_M_CPU` for that SoC) — so
-unlike the other two samples, **`https_init` only builds for real hardware**, matching how NCS's own
-MCUboot+sysbuild cellular samples (e.g. `nrf/samples/cellular/lwm2m_client`) restrict themselves to
-real boards via `platform_allow` rather than trying to make MCUboot board-conditional:
+- Always `-p always`. Only one sample and board can live in a build directory at a time.
+- The NCS topdir defaults sysbuild on, so a Feather builds MCUboot, TF-M and the application with
+  no flag. The vanilla topdir defaults it off, so a C6 build that needs MCUboot passes
+  `--sysbuild`. Each sample's README carries the exact command per board.
+- Build directories are gitignored under `/build/` and `/build_*/`. `~/pigeon`'s clangd config
+  points at `build/https_init/compile_commands.json` here through a `pigeon/build` symlink, so
+  keep `https_init` building under plain `build/` for that tooling to resolve includes.
+- The ESP32-C6 needs `west blobs fetch hal_espressif` and `west packages pip --install` once.
+- Confirm a build by running it and checking it exits 0, never by reading the Kconfig and
+  inferring.
 
-```sh
-west build -d build samples/https_init -b circuitdojo_feather/nrf9160/ns
-```
+## Traps that have cost real time
 
-(Verified 2026-07-15: this board target builds clean — 80% flash, 51% RAM — while
-`-b native_sim/native/64` on `https_init` fails at CMake configure time for the reason above. This
-was introduced by the same-day "Migrate https_init to devicetree-based MCUboot partitioning"
-commit, not by anything in `~/pigeon`; if `https_init` ever needs to build for `native_sim` again,
-that commit's `sysbuild.conf` is where to start.)
-
-Flashing/monitoring a real board uses the `.vscode/tasks.json` tasks (`West Flash`, driven by
-`nrfutil`; `Serial Monitor`, `pyserial-miniterm` at 1_000_000 baud on `/dev/ttyUSB0`) rather than
-plain `west flash` — check that file before improvising flash commands, and see
-"Modem reset safety" above before power-cycling attached hardware.
-
-When verifying a change actually builds (not just reviewing it), run the real `west build` command
-above and confirm it exits 0 — don't just read the CMake/Kconfig and infer success.
+- **Modem reset safety.** Never reset, reflash or power-cycle an nRF91 mid-connection. An
+  ungraceful reset trips the modem's reset-loop protection and refuses LTE attach for 30 minutes.
+  `net_disconnect()`'s explicit `CFUN=0` is what avoids it; do not skip it when scripting.
+- **The ESP32-C6 console port drives EN and IO9.** A terminal opened with DTR and RTS asserted
+  parks the chip in download mode. Open it with `--rts 0 --dtr 0`.
+- **`native_sim` needs a dummy address.** NSOS has no L2 and never runs DHCP, and the connection
+  manager only reports L4 connected once the interface has an address, so `net/native_sim.c`
+  assigns `192.0.2.1`, which nothing routes through.
+- **Both CoAP samples fill about 90% of the stock non-secure slot on a Feather.** Adding a
+  subsystem there needs `https_init`'s partition-rebalance overlay.
+- **Espressif's MCUboot port is overwrite-only**, so a bad image on the C6 cannot be reverted to a
+  previous slot. See `docs/firmware-updates.md`.
 
 ## Conventions
 
-- 2-space indentation, Google base style, 100-column limit (`.clang-format`); `clangd` is configured
-  for the `arm-zephyr-eabi` toolchain (`.clangd`).
-- Real device secrets (`CONFIG_PIGEON_ENDPOINT`/`CONFIG_PIGEON_TOKEN`, any token/key material) belong
-  in the gitignored `prj.local.conf`, never in a tracked `prj.conf`/overlay, and never printed to a
-  transcript or committed.
+- 2-space indentation, Google base style, 100-column limit (`.clang-format`); clangd is configured
+  for `arm-zephyr-eabi` (`.clangd`).
+- A comment states a constraint the code cannot show, tersely, for a human. No task numbers, no
+  dates, no change-log narration, no verification stories, no notes to a reviewer.
+- KISS: the plain construct first. No new dependencies and no new Kconfig symbols unless a board
+  genuinely needs one.
+- A sample stays a teaching unit: `main.c` and `shadow.c` are the lesson and stay in the sample;
+  board bring-up is plumbing and lives in `common/`.
+- `README.md` and `docs/` are the user-facing documentation. Every command in them exists in the
+  tree exactly as written; keep it that way when the tree moves.
