@@ -68,7 +68,7 @@ The sample's own options:
   ``CONFIG_ASSET_TRACKER_CONNECT_BACKOFF_BASE_SEC`` / ``_MAX_SEC``: how hard the
   device tries to reach the network before rebooting to try again from cold.
 - ``CONFIG_PIGEON_HTTPS_SEC_TAG`` (44): the TLS security tag the CA certificate
-  in ``cert/`` is installed under. Each sample pins its own, because the
+  in ``../common/cert/`` is installed under. Each sample pins its own, because the
   modem's credential store outlives a reflash.
 
 ``shadow.c`` understands these ``target_config`` keys: ``log`` (bool, silences

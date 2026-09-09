@@ -60,7 +60,7 @@ that board file fails to associate rather than failing quietly.
 The sample's own options:
 
 - ``CONFIG_PIGEON_HTTPS_SEC_TAG`` (49): the TLS security tag the CA
-  certificate in ``cert/`` is installed under. Each sample pins its own.
+  certificate in ``../common/cert/`` is installed under. Each sample pins its own.
 - ``CONFIG_PIGEON_FOTA`` (``fota.conf``): downloads a firmware image named by
   the shadow into MCUboot's second slot and reboots into it.
 - ``CONFIG_PIGEON_FOTA_CURRENT_VERSION`` (``fota.conf``): what this build

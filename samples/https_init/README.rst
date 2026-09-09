@@ -58,7 +58,7 @@ The sample's own options, all in ``prj.conf`` unless noted:
   this build reports as its running version; bump it with each release so
   it matches the version the image is uploaded under.
 - ``CONFIG_PIGEON_HTTPS_SEC_TAG`` (42): the TLS security tag the CA
-  certificate in ``cert/`` is installed under. Each sample pins its own,
+  certificate in ``../common/cert/`` is installed under. Each sample pins its own,
   because the modem's credential store outlives a reflash.
 - ESP32-C6 only (``boards/esp32c6_devkitc_hpcore.conf``): 32 KiB download
   chunks, download resume, a bounded attempt budget per firmware target and

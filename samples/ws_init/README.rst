@@ -82,7 +82,7 @@ sample writes:
   ``kernel version,kernel uptime``; a command the image does not register
   answers ``-ENOEXEC`` however it is spelled.
 - ``CONFIG_PIGEON_HTTPS_SEC_TAG`` (43): the TLS security tag the CA certificate
-  in ``cert/`` is installed under. Each sample pins its own, because the
+  in ``../common/cert/`` is installed under. Each sample pins its own, because the
   modem's credential store outlives a reflash.
 - ESP32-C6 only (``boards/esp32c6_devkitc_hpcore.conf``): reboot on a fatal
   error and a wedge watchdog, because a long-lived socket on that board is
