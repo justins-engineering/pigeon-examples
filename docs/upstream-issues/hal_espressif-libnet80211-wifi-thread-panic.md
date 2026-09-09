@@ -1,4 +1,4 @@
-# DRAFT — not posted. For Justin to review and file at
+# Not yet filed upstream. Target tracker:
 # https://github.com/zephyrproject-rtos/hal_espressif/issues
 
 **Title suggestion:** ESP32-C6: `wifi` thread hard-panics inside `libnet80211.a`
@@ -10,19 +10,19 @@ uptime with reconnect churn
 On an ESP32-C6-DevKitC-1 running a Zephyr application with the native
 WiFi/mbedTLS stack (no cellular/modem offload), the `wifi` thread eventually
 hits a fatal kernel panic (`ZEPHYR FATAL ERROR 4`, `Environment call from
-M-mode` — i.e. a deliberate `ecall`-based assert/fault path, not a wild
-pointer dereference) after roughly 40-60 minutes of continuous WiFi station
+M-mode`: a deliberate `ecall`-based assert or fault path, not a wild pointer
+dereference) after roughly 40-60 minutes of continuous WiFi station
 uptime under normal application traffic (periodic HTTPS requests + a
 persistent WebSocket connection with reconnect churn). The panic's call
 stack resolves into `libnet80211.a`'s closed-source WiFi MAC-layer
 timer/probe/beacon-management code, calling into the C library allocator.
-Two independent hardware soaks reproduced the same class of failure (first
-at ~42 min, second — unconfirmed exact trace, see below — apparently again
-around/after ~60 min).
+Two independent hardware soaks reproduced the same class of failure: the
+first at ~42 min, the second apparently again around or after ~60 min, with
+its exact trace unconfirmed (see below).
 
 This is reported against `hal_espressif` because the crashing code
 (`wl_cnx.o`, `ieee80211_timer.o`) lives in the vendored, source-unavailable
-`zephyr/blobs/lib/esp32c6/libnet80211.a` blob this module ships — there is no
+`zephyr/blobs/lib/esp32c6/libnet80211.a` blob this module ships. There is no
 source in the Zephyr tree to fix directly, and it isn't obviously a bug in
 the application, `pigeon` (our device library), or Zephyr's own kernel/heap
 code.
@@ -73,7 +73,7 @@ call trace:
 ```
 
 After the panic, Zephyr's default `k_sys_fatal_error_handler()` /
-`arch_system_halt()` runs (`arch_irq_lock()` + spin forever) — confirmed on
+`arch_system_halt()` runs (`arch_irq_lock()` + spin forever), confirmed on
 real hardware as total serial console silence and zero response to shell
 input, for over an hour, on both reproductions. This is expected/correct
 Zephyr behavior given the panic; it's mentioned only so a reader
@@ -85,14 +85,13 @@ separate watchdog-mitigation work referenced below).
 - **Not an immediate/deterministic failure.** Round 1 crashed at ~42 min
   uptime; round 2 (same firmware, same build) ran for 60+ clean minutes with
   no failure signal at all before going silent (a second wedge is suspected
-  but its exact trace wasn't captured — logging infrastructure issue on our
-  end, not a hardware issue). Timing to failure appears to vary with
-  real-world WiFi/AP conditions (this workspace's own `CLAUDE.md` separately
-  documents flaky, undiagnosed WiFi-join timing variance run-to-run on this
-  same board).
+  but its exact trace wasn't captured, a logging problem on our end rather
+  than a hardware one). Timing to failure appears to vary with real-world
+  WiFi and AP conditions; the same board also shows undiagnosed run-to-run
+  variance in how long a WiFi join takes.
 - **Correlates with reconnect/retry churn**, not just raw uptime: recurring
   `esp32c6_wifi_adapter: memory allocation failed` (from `esp_adapter.c`'s
-  `wifi_malloc`/`wifi_calloc`, when `CONFIG_ESP_WIFI_HEAP_SYSTEM=y` — these
+  `wifi_malloc`/`wifi_calloc`, when `CONFIG_ESP_WIFI_HEAP_SYSTEM=y`; these
   draw from Zephyr's own `k_malloc`/`CONFIG_HEAP_MEM_POOL_SIZE` pool, not the
   arena the panic traces into) and `esp32_wifi: Failed to send packet`
   errors preceded the panic in both runs, alongside eventual application-
@@ -104,23 +103,23 @@ separate watchdog-mitigation work referenced below).
     draw from when `CONFIG_ESP_WIFI_HEAP_SYSTEM=y`): showed a real, slow,
     reproducible decline in its *recovered* floor across both soaks
     (roughly 60-75 bytes/min), but still had ~14KB free at the time of the
-    round-1 crash — not exhausted.
+    round-1 crash, so not exhausted.
   - `CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE` (~151.7KB, backs plain
-    `malloc()`/`free()` — the pool the panic's call stack actually traces
+    `malloc()`/`free()`, and the pool the panic's call stack actually traces
     into, since `libnet80211.a`'s MAC-layer blob calls libc `malloc()`
     directly and can't respect the `CONFIG_ESP_WIFI_HEAP_SYSTEM` Kconfig
     choice that only rewires the source-level `esp_adapter.c` glue):
     showed `allocated=0, max_allocated=0` for the **entire 60+ clean minutes**
-    of round 2 — i.e. this arena was never touched at all during normal
+    of round 2, so this arena was never touched at all during normal
     operation, ruling out both "it leaks" and "it's undersized" as
     explanations for the eventual failure.
 
   Net conclusion: this does not look like a resource-exhaustion bug in
   either Zephyr-side heap. It looks like a rare, conditionally-triggered
   fault inside the vendored MAC-layer timer/probe/beacon-management code
-  itself (`libnet80211.a`), plausibly provoked by — but not simply caused
-  by — memory/retry pressure elsewhere in the WiFi stack during reconnect
-  churn.
+  itself (`libnet80211.a`), plausibly provoked by memory and retry pressure
+  elsewhere in the WiFi stack during reconnect churn, though not simply
+  caused by it.
 
 ## What we've done about it (not a fix for this issue, for context)
 
@@ -132,7 +131,7 @@ successful telemetry/shadow round trips), with the board's hardware
 watchdog as a fallback, so the device self-recovers via `sys_reboot()`
 rather than hanging forever. That work also surfaced what looks like a
 **separate**, likely-Zephyr-side bug in `drivers/watchdog/wdt_esp32.c`
-(missing ms→ticks conversion) — reported separately, see
+(missing ms→ticks conversion), reported separately in
 `zephyr-wdt_esp32-missing-tick-conversion.md` in this same directory.
 
 ## Ask

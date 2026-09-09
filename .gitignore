@@ -38,8 +38,8 @@ log*.txt
 # trailing-slash pattern only matches real directories, not symlinks.
 /pigeon
 
-# Pristine reference copy of the original Nordic NIDD sample this workspace
-# was bootstrapped from — kept on disk locally, not part of this repo.
+# Pristine reference copy of the original Nordic NIDD sample this tree was
+# bootstrapped from. Kept on disk locally, not part of this repo.
 /nidd-sample/
 
 # Cortex debugging states
