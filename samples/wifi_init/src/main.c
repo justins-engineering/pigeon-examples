@@ -4,10 +4,7 @@
 #include "net_connect.h"
 #include "shadow.h"
 
-/* The platform's root CA, terminated because mbedTLS parses PEM as a string.
- * Google publishes GTS Root R4 alongside a legacy RSA cross-sign of itself;
- * only the self-signed copy is here, since a device handed its own anchor has
- * no use for the cross-sign and both carry the same key. */
+/* The platform's root CA, terminated because mbedTLS parses PEM as a string. */
 static const char ca_cert[] = {
 #include "GTS_Root_R4.crt.hex"
     0x00
