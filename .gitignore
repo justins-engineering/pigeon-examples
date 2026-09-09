@@ -19,9 +19,6 @@ log*.txt
 # app.cmake merges both when present.
 *.local.conf
 
-# Agent guidance, local to a working copy
-/CLAUDE.md
-
 # Python venv
 .venv/
 
