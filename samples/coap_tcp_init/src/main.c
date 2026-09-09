@@ -1,58 +1,46 @@
 #include <pigeon.h>
 #include <zephyr/kernel.h>
 
-#include "net/connection_manager.h"
+#include "net_connect.h"
 #include "shadow.h"
 
-/*
- * CoAP over TLS/TCP (RFC 8323 coaps+tcp://) -- pigeon's
- * CONFIG_PIGEON_COAP_TRANSPORT_TCP, the stream sibling of coap_dtls_init's
- * primary DTLS/UDP transport: RFC 8323 framing on a PSK TLS stream, with
- * TCP owning reliability instead of CoAP-layer retransmission. The PSK
- * handshake is the device's entire authentication -- the platform maps
- * the PSK identity to the pigeon and holds the bearer token server-side,
- * so unlike the HTTPS samples no CONFIG_PIGEON_TOKEN is needed here.
- */
+/* A Kconfig string is always defined, so "" is its only way of saying "not
+ * supplied"; pigeon_init() reads a non-NULL empty string as a zero-length
+ * credential that fails every handshake. */
+#define PSK_CONF_OR_NULL(s) ((s)[0] ? (s) : NULL)
+
 int main(void) {
-  /* The endpoint comes from CONFIG_PIGEON_ENDPOINT (see prj.local.conf).
-   * PSK identity is the pigeon's id; the secret is the short key minted
-   * alongside the bearer token at provisioning (connector.Coap's
-   * tls_psk_identity/tls_psk_secret). Placeholders here -- pigeon
-   * registers whatever the app supplies under CONFIG_PIGEON_COAP_SEC_TAG
-   * at pigeon_init() time. */
+  /* The pre-shared key is this device's whole authentication: the platform
+   * maps the identity to a pigeon and keeps that pigeon's bearer token, so no
+   * token is compiled in here. device_id only names the device in its own
+   * logs. */
   struct pigeon_config config = {
-      .device_id = "demo-pigeon-0002",
+      .device_id = "pigeon-coap-tcp-sample",
       .connector =
           {
               .type = PIGEON_CONNECTOR_COAP,
               .coap =
                   {
-                      .tls_psk_identity = "demo-pigeon-0002",
-                      .tls_psk_secret = "replace-with-psk-secret",
+                      .tls_psk_identity = PSK_CONF_OR_NULL(CONFIG_PIGEON_COAP_TLS_PSK_IDENTITY),
+                      .tls_psk_secret = PSK_CONF_OR_NULL(CONFIG_PIGEON_COAP_TLS_PSK_SECRET),
                   },
           },
   };
 
-  /* Like coap_dtls_init, pigeon_init() runs BEFORE LTE comes up: on
-   * modem-offloaded boards (CONFIG_MODEM_KEY_MGMT) it writes the PSK into
-   * the modem's own credential store, which only accepts writes while the
-   * modem is offline. Harmless on boards without a modem store (native
-   * TLS registration doesn't care about ordering). */
+  /* Runs before the interface comes up: a modem's credential store only
+   * accepts writes while it is offline. */
   int err = pigeon_init(&config);
-
   if (err) {
     return err;
   }
 
-  err = lte_connect();
+  err = net_connect();
   if (err) {
     return err;
   }
 
-  /* See https_init's main.c: only the platform -> device direction is
-   * exercised as a poll loop; shadow_loop() does not return under normal
-   * operation. */
+  /* Polls the shadow and reports telemetry until told to reboot. */
   shadow_loop();
 
-  return lte_disconnect();
+  return net_disconnect();
 }
