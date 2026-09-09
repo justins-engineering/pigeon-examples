@@ -49,20 +49,31 @@ static void conn_event_handler(
   }
 }
 
-int net_install_ca(int sec_tag, const char* pem, size_t len) {
-  /* The store is reached over AT commands, so the modem library has to be
-   * running; the interface brings it up later only if nothing has yet. */
-  if (!nrf_modem_is_initialized()) {
-    int err = nrf_modem_lib_init();
+int net_prepare(void) {
+  /* The interface brings the library up later; nothing else does it earlier,
+   * and by then the store no longer accepts writes. */
+  if (nrf_modem_is_initialized()) {
+    return 0;
+  }
 
-    if (err) {
-      LOG_ERR("nrf_modem_lib_init, error: %d", err);
-      return err;
-    }
+  int err = nrf_modem_lib_init();
+
+  if (err) {
+    LOG_ERR("nrf_modem_lib_init, error: %d", err);
+  }
+
+  return err;
+}
+
+int net_install_ca(int sec_tag, const char* pem, size_t len) {
+  int err = net_prepare();
+
+  if (err) {
+    return err;
   }
 
   bool exists;
-  int err = modem_key_mgmt_exists(sec_tag, MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN, &exists);
+  err = modem_key_mgmt_exists(sec_tag, MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN, &exists);
 
   if (err) {
     LOG_ERR("modem_key_mgmt_exists, error: %d", err);

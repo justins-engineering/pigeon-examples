@@ -4,27 +4,9 @@
 #include "net_connect.h"
 #include "shadow.h"
 
-#if defined(CONFIG_MODEM_KEY_MGMT)
-#include <modem/nrf_modem_lib.h>
-#include <nrf_modem.h>
-#endif
-
 /* A Kconfig string is always defined, so "" is its only way of saying "not
  * supplied"; NULL leaves whatever already sits under the sec tag in place. */
 #define PSK_CONF_OR_NULL(s) ((s)[0] ? (s) : NULL)
-
-/* The modem reaches its credential store over AT commands, so the library has
- * to be running before the PSK is written, and the interface has to stay down
- * because the store only accepts writes while the modem is offline. */
-static int credential_store_ready(void) {
-#if defined(CONFIG_MODEM_KEY_MGMT)
-  if (!nrf_modem_is_initialized()) {
-    return nrf_modem_lib_init();
-  }
-#endif
-
-  return 0;
-}
 
 int main(void) {
   /* The endpoint and the PSK come from Kconfig. device_id only names this
@@ -43,7 +25,7 @@ int main(void) {
           },
   };
 
-  int err = credential_store_ready();
+  int err = net_prepare();
 
   if (err) {
     return err;

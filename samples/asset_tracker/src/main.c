@@ -56,7 +56,13 @@ int main(void) {
     );
   }
 
-  int err = net_install_ca(CONFIG_PIGEON_HTTPS_SEC_TAG, ca_cert, sizeof(ca_cert));
+  int err = net_prepare();
+
+  if (err) {
+    return err;
+  }
+
+  err = net_install_ca(CONFIG_PIGEON_HTTPS_SEC_TAG, ca_cert, sizeof(ca_cert));
   if (err) {
     return err;
   }

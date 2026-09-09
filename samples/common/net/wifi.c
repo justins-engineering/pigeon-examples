@@ -47,6 +47,11 @@ static void conn_event_handler(
   }
 }
 
+int net_prepare(void) {
+  /* Credentials go into Zephyr's own store, which is ready from boot. */
+  return 0;
+}
+
 int net_install_ca(int sec_tag, const char* pem, size_t len) {
   int err = tls_credential_add(sec_tag, TLS_CREDENTIAL_CA_CERTIFICATE, pem, len);
 

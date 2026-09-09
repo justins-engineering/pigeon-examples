@@ -9,6 +9,12 @@
 
 #include <stddef.h>
 
+/** Brings this board's credential store to a writable state; idempotent.
+ *  Call it before pigeon_init() and net_connect(): a modem reaches its store
+ *  over AT commands, which need the modem library running and the modem
+ *  offline. */
+int net_prepare(void);
+
 /** Brings the interface up and blocks until it has connectivity. */
 int net_connect(void);
 

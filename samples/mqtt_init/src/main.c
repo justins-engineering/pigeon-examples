@@ -2,11 +2,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
-#if defined(CONFIG_MODEM_KEY_MGMT)
-#include <modem/nrf_modem_lib.h>
-#include <nrf_modem.h>
-#endif
-
 #include "net_connect.h"
 #include "shadow.h"
 
@@ -27,19 +22,11 @@ BUILD_ASSERT(sizeof(ca_cert) < KB(4), "the modem's credential store caps a certi
  * credential that fails every handshake. */
 #define PSK_CONF_OR_NULL(s) ((s)[0] ? (s) : NULL)
 
-/* Whatever this board's TLS stack needs in place before the link comes up: a
- * modem's credential store only accepts writes while it is offline. */
-static int prepare_credentials(void) {
+/* A PSK build has nothing to install: pigeon_init() registers the identity and
+ * secret itself. */
+static int install_broker_ca(void) {
 #if defined(CONFIG_PIGEON_MQTT_AUTH_CERT)
   return net_install_ca(CONFIG_PIGEON_MQTT_SEC_TAG, ca_cert, sizeof(ca_cert));
-#elif defined(CONFIG_MODEM_KEY_MGMT)
-  /* The modem library has to be running before pigeon_init() writes the PSK
-   * over AT, and on this arm only the interface would otherwise start it. */
-  if (nrf_modem_is_initialized()) {
-    return 0;
-  }
-
-  return nrf_modem_lib_init();
 #else
   return 0;
 #endif
@@ -64,7 +51,11 @@ int main(void) {
           },
   };
 
-  int err = prepare_credentials();
+  int err = net_prepare();
+
+  if (!err) {
+    err = install_broker_ca();
+  }
 
   if (err) {
     LOG_ERR("Credential setup failed: %d", err);

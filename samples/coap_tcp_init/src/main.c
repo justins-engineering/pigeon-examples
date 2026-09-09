@@ -27,9 +27,15 @@ int main(void) {
           },
   };
 
-  /* Runs before the interface comes up: a modem's credential store only
-   * accepts writes while it is offline. */
-  int err = pigeon_init(&config);
+  int err = net_prepare();
+
+  if (err) {
+    return err;
+  }
+
+  /* Registers the PSK, so it runs before the interface comes up: a modem's
+   * credential store only accepts writes while it is offline. */
+  err = pigeon_init(&config);
   if (err) {
     return err;
   }
