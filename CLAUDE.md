@@ -118,9 +118,11 @@ west build -p always -d build_<what> -b <board target> samples/<sample>
 ```
 
 - Always `-p always`. Only one sample and board can live in a build directory at a time.
-- The NCS topdir defaults sysbuild on, so a Feather builds MCUboot, TF-M and the application with
-  no flag. The vanilla topdir defaults it off, so a C6 build that needs MCUboot passes
-  `--sysbuild`. Each sample's README carries the exact command per board.
+- The NCS topdir defaults sysbuild on: its west enables sysbuild when nothing sets it, and
+  neither `.west/config` does. So a Feather builds MCUboot, TF-M and the application with no
+  flag, and it is the vanilla topdir, which defaults it off, where a C6 build that needs
+  MCUboot passes `--sysbuild`. Name the flag only where it changes what gets built; each
+  sample's README carries the exact command per board.
 - Build directories are gitignored under `/build/` and `/build_*/`. `~/pigeon`'s clangd config
   points at `build/https_init/compile_commands.json` here through a `pigeon/build` symlink, so
   keep `https_init` building under plain `build/` for that tooling to resolve includes.
