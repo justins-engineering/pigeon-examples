@@ -22,9 +22,17 @@ if(NOT board_target)
   set(board_target "$ENV{BOARD}")
 endif()
 
+# The two names Zephyr resolves a board conf under: the whole board target, and
+# the same without the SoC qualifier.
+string(REPLACE "/" "_" board_conf_names "${board_target}")
+string(REGEX REPLACE "^([^/]+)/[^/]+" "\\1" board_short "${board_target}")
+string(REPLACE "/" "_" board_short "${board_short}")
+list(APPEND board_conf_names ${board_short})
+list(REMOVE_DUPLICATES board_conf_names)
+
 # Board-family fragments carry the bring-up every networked sample needs. They
 # merge after the sample's own boards/<board>.conf, so a sample cannot override
-# them there; prj.local.conf merges last and can.
+# them there; the local files below merge last and can.
 if(SAMPLE_NETWORK)
   if(board_target MATCHES "^circuitdojo_feather")
     list(APPEND EXTRA_CONF_FILE ${CMAKE_CURRENT_LIST_DIR}/boards/nrf91.conf)
@@ -49,8 +57,18 @@ if(SAMPLE_NETWORK AND board_target MATCHES "^(esp32c6_devkitc|native_sim)")
   endforeach()
 endif()
 
-# Endpoint, token, WiFi and PSK credentials live in the git-ignored
-# prj.local.conf of each sample.
+# Endpoint, token and PSK credentials live in the git-ignored prj.local.conf of
+# each sample.
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/prj.local.conf)
   list(APPEND EXTRA_CONF_FILE ${CMAKE_CURRENT_SOURCE_DIR}/prj.local.conf)
 endif()
+
+# Credentials only one board has, in a git-ignored file beside that board's own
+# conf. Kconfig echoes a value assigned to a symbol the board does not have, so
+# a WiFi key left in prj.local.conf reaches the build log of every board that
+# has no WiFi.
+foreach(name ${board_conf_names})
+  if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/boards/${name}.local.conf)
+    list(APPEND EXTRA_CONF_FILE ${CMAKE_CURRENT_SOURCE_DIR}/boards/${name}.local.conf)
+  endif()
+endforeach()

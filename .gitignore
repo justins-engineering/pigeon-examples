@@ -14,9 +14,10 @@ log*.txt
 # Secret keys
 **/keys/private/*
 
-# Local Kconfig overrides (real device secrets); see samples/*/CMakeLists.txt
-# for the auto-merge-if-present logic.
-prj.local.conf
+# Local Kconfig overrides (real device secrets): each sample's prj.local.conf
+# and, beside a board's own conf, boards/<board>.local.conf. samples/common/
+# app.cmake merges both when present.
+*.local.conf
 
 # Python venv
 .venv/
