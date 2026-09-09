@@ -35,17 +35,29 @@ on top of every other configuration file::
   CONFIG_PIGEON_ENDPOINT="coaps://coap.pidgeiot.com:5684/device/pigeons/<pigeon-id>"
   CONFIG_PIGEON_COAP_TLS_PSK_IDENTITY="<psk-identity>"
   CONFIG_PIGEON_COAP_TLS_PSK_SECRET="<psk-secret>"
-  # ESP32-C6 only
-  CONFIG_WIFI_CREDENTIALS_STATIC_SSID="<ssid>"
-  CONFIG_WIFI_CREDENTIALS_STATIC_PASSWORD="<password>"
 
 The values are compiled in, so a change here needs a rebuild. Refreshing a
 pigeon's token mints a new PSK and revokes the previous one; rebuild with the
 new values.
 
+On the ESP32-C6 the WiFi credentials go in a second git-ignored file, beside
+that board's own conf and merged after ``prj.local.conf``: write
+``samples/coap_dtls_init/boards/esp32c6_devkitc_hpcore.local.conf``::
+
+  CONFIG_WIFI_CREDENTIALS_STATIC_SSID="<ssid>"
+  CONFIG_WIFI_CREDENTIALS_STATIC_PASSWORD="<password>"
+
+Keeping them out of ``prj.local.conf`` is what stops them reaching the build log
+of a board that has no WiFi: Kconfig prints the value assigned to a symbol whose
+dependencies are unmet, and that file is merged on every board.
+
 The scheme has to be ``coaps://``. The library checks it against the transport
 this build was compiled with and refuses the endpoint rather than failing later
 in a handshake; ``coaps+tcp://`` belongs to ``coap_tcp_init``.
+
+Only production terminates CoAP; staging runs no terminator at all. To develop
+against something local instead, point the build at libcoap's ``coap-server``:
+``docs/coap-conformance.md`` has the commands.
 
 The sample's own options, all in ``prj.conf`` unless noted:
 
@@ -154,10 +166,9 @@ Troubleshooting
   non-secure partition, which is why they build size-optimized.
 - native_sim logs one ``Network disconnected`` before ``Network connected``:
   the simulated interface reports its state before it has an address.
-- A Feather or native_sim build log quoting your WiFi password: Kconfig prints
-  the value of a symbol whose dependencies are unmet, and ``prj.local.conf`` is
-  merged on every board. Keep the two WiFi keys out of it unless you are
-  building for the ESP32-C6.
+- A Feather or native_sim build log quoting your WiFi password: the two WiFi
+  keys are in ``prj.local.conf``, which every board merges. They belong in
+  ``boards/esp32c6_devkitc_hpcore.local.conf``, which only that board reads.
 
 Next steps
 ----------

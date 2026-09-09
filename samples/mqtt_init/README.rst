@@ -54,14 +54,22 @@ top of every other configuration file::
   CONFIG_PIGEON_MQTT_TLS_PSK_SECRET="<minted psk secret>"
   # certificate mode
   CONFIG_PIGEON_TOKEN="<device-bearer-token>"
-  # ESP32-C6 only
-  CONFIG_WIFI_CREDENTIALS_STATIC_SSID="<ssid>"
-  CONFIG_WIFI_CREDENTIALS_STATIC_PASSWORD="<password>"
 
 The endpoint names the broker, not this pigeon: no path, unlike the HTTPS and
 CoAP connectors' endpoints. The values are compiled in, so a change here needs
 a rebuild, and refreshing a pigeon's token revokes both the previous token and
 the previous PSK secret.
+
+On the ESP32-C6 the WiFi credentials go in a second git-ignored file, beside
+that board's own conf and merged after ``prj.local.conf``: write
+``samples/mqtt_init/boards/esp32c6_devkitc_hpcore.local.conf``::
+
+  CONFIG_WIFI_CREDENTIALS_STATIC_SSID="<ssid>"
+  CONFIG_WIFI_CREDENTIALS_STATIC_PASSWORD="<password>"
+
+Keeping them out of ``prj.local.conf`` is what stops them reaching the build log
+of a board that has no WiFi: Kconfig prints the value assigned to a symbol whose
+dependencies are unmet, and that file is merged on every board.
 
 The sample's own options:
 
@@ -82,8 +90,9 @@ The sample's own options:
   build decodes to plausible nonsense rather than erroring, so archive it
   alongside whatever image was flashed.
 
-To swap a board's authentication mode, add an overlay to the build. On the
-ESP32-C6, TLS-PSK::
+``CMakeLists.txt`` declares both shapes, ``set(SAMPLE_TLS verify psk)``, so a
+board whose TLS runs in mbedTLS compiles both want lists in and an overlay only
+picks which one the session uses. On the ESP32-C6, TLS-PSK::
 
   west build -p always -d build -b esp32c6_devkitc/esp32c6/hpcore samples/mqtt_init \
     -- -DEXTRA_CONF_FILE=overlay-psk-native-tls.conf

@@ -37,17 +37,27 @@ top of every other configuration file::
 
   CONFIG_PIGEON_ENDPOINT="https://api.pidgeiot.com/device/pigeons/<pigeon-id>"
   CONFIG_PIGEON_TOKEN="<device-bearer-token>"
-  CONFIG_WIFI_CREDENTIALS_STATIC_SSID="<ssid>"
-  CONFIG_WIFI_CREDENTIALS_STATIC_PASSWORD="<password>"
 
 The values are compiled in, so a change here needs a rebuild. Refreshing a
 pigeon's token revokes the previous one; rebuild with the new value, and
 rebuild any firmware image that was uploaded to the platform before the
 refresh, since it carries the old token too.
 
+The WiFi credentials go in a second git-ignored file, beside the board's own
+conf and merged after ``prj.local.conf``: write
+``samples/wifi_init/boards/esp32c6_devkitc_hpcore.local.conf``::
+
+  CONFIG_WIFI_CREDENTIALS_STATIC_SSID="<ssid>"
+  CONFIG_WIFI_CREDENTIALS_STATIC_PASSWORD="<password>"
+
+Keeping them out of ``prj.local.conf`` is what stops them reaching the build log
+of a board that has no WiFi: Kconfig prints the value assigned to a symbol whose
+dependencies are unmet, and that file is merged on every board. This sample
+builds for ``native_sim`` too, which is such a board.
+
 The SSID has to be a non-empty string before the merge, so
-``../common/boards/esp32c6.conf`` ships ``"changeme"``. A build that never
-got a ``prj.local.conf`` fails to associate rather than failing quietly.
+``../common/boards/esp32c6.conf`` ships ``"changeme"``. A build that never got
+that board file fails to associate rather than failing quietly.
 
 The sample's own options:
 

@@ -41,9 +41,6 @@ of every other configuration file::
 
   CONFIG_PIGEON_ENDPOINT="https://<platform-host>/device/pigeons/<pigeon-id>"
   CONFIG_PIGEON_TOKEN="<device-bearer-token>"
-  # ESP32-C6 only
-  CONFIG_WIFI_CREDENTIALS_STATIC_SSID="<ssid>"
-  CONFIG_WIFI_CREDENTIALS_STATIC_PASSWORD="<password>"
 
 Copy the endpoint verbatim from the pigeon's detail page rather than
 assembling it; mint the token there too, with the refresh action.
@@ -52,6 +49,17 @@ The values are compiled in, so a change here needs a rebuild. Refreshing a
 token revokes the previous one the moment the new one is issued, so a device
 still running the old build starts failing every request until it is rebuilt
 and reflashed with the new value.
+
+On the ESP32-C6 the WiFi credentials go in a second git-ignored file, beside
+that board's own conf and merged after ``prj.local.conf``: write
+``samples/ws_init/boards/esp32c6_devkitc_hpcore.local.conf``::
+
+  CONFIG_WIFI_CREDENTIALS_STATIC_SSID="<ssid>"
+  CONFIG_WIFI_CREDENTIALS_STATIC_PASSWORD="<password>"
+
+Keeping them out of ``prj.local.conf`` is what stops them reaching the build log
+of a board that has no WiFi: Kconfig prints the value assigned to a symbol whose
+dependencies are unmet, and that file is merged on every board.
 
 The socket is authenticated with the same endpoint and token as the HTTPS
 connector, reaching ``<endpoint>/ws``. There are no separate WebSocket

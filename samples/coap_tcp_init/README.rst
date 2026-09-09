@@ -41,14 +41,26 @@ on top of every other configuration file::
   CONFIG_PIGEON_ENDPOINT="coaps+tcp://<coap-host>/device/pigeons/<pigeon-id>"
   CONFIG_PIGEON_COAP_TLS_PSK_IDENTITY="<psk-identity>"
   CONFIG_PIGEON_COAP_TLS_PSK_SECRET="<psk-secret>"
-  # ESP32-C6 only
-  CONFIG_WIFI_CREDENTIALS_STATIC_SSID="<ssid>"
-  CONFIG_WIFI_CREDENTIALS_STATIC_PASSWORD="<password>"
 
 The values are compiled in, so a change here needs a rebuild. Refreshing a
 pigeon's token mints a new PSK with it and retires the old one.
 
+On the ESP32-C6 the WiFi credentials go in a second git-ignored file, beside
+that board's own conf and merged after ``prj.local.conf``: write
+``samples/coap_tcp_init/boards/esp32c6_devkitc_hpcore.local.conf``::
+
+  CONFIG_WIFI_CREDENTIALS_STATIC_SSID="<ssid>"
+  CONFIG_WIFI_CREDENTIALS_STATIC_PASSWORD="<password>"
+
+Keeping them out of ``prj.local.conf`` is what stops them reaching the build log
+of a board that has no WiFi: Kconfig prints the value assigned to a symbol whose
+dependencies are unmet, and that file is merged on every board.
+
 The port may be left off the endpoint, in which case 5684 is used.
+
+Only production terminates CoAP; staging runs no terminator at all. To develop
+against something local instead, point the build at libcoap's ``coap-server``:
+``docs/coap-conformance.md`` has the commands.
 
 The sample's own options:
 
@@ -57,9 +69,10 @@ The sample's own options:
   scheme against it and refuses to start on a mismatch.
 - ``CONFIG_PIGEON_COAP_SEC_TAG``: the security tag the library registers the
   PSK under; the default of 1 needs no change.
-- ``boards/esp32c6_devkitc_hpcore.conf`` and
-  ``boards/native_sim_native_64.conf``: the mbedTLS PSK key exchange and the
-  PSA algorithms it needs. The Feathers need none of it, because their modem
+- ``set(SAMPLE_TLS psk)`` in ``CMakeLists.txt``, before it includes
+  ``../common/app.cmake``: pulls in ``../common/boards/tls-psk.conf``, the
+  mbedTLS key exchange and PSA algorithms a pre-shared key needs, on the boards
+  whose TLS runs in mbedTLS. The Feathers need none of it, because their modem
   runs the handshake and keeps the key in its own store.
 
 ``shadow.c`` understands these ``target_config`` keys: ``log`` (bool,
