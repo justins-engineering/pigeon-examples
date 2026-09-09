@@ -66,8 +66,9 @@ The sample's own options, all in ``prj.conf`` unless noted:
 - ``CONFIG_PIGEON_COAP_DTLS_CID``: on by default in the library. Offers RFC
   9146 Connection ID so a session survives a NAT rebind or a PSM wake without
   a re-handshake. Each handshake logs whether it was negotiated.
-- ``CONFIG_PIGEON_COAP_SEC_TAG``: the security tag the PSK is provisioned
-  under; the default of 1 needs no change.
+- ``CONFIG_PIGEON_COAP_SEC_TAG`` (45): the security tag the PSK is provisioned
+  under. Each sample pins its own, because the modem's credential store
+  outlives a reflash.
 - ``CONFIG_PIGEON_LOG_UPLOAD``: batches this device's log output and sends it
   to the platform, dictionary-encoded, as an RFC 7959 Block1 sequence.
   Decoding a chunk needs the ``log_dictionary.json`` of the exact build that

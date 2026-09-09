@@ -59,8 +59,9 @@ The sample's own options, all in ``prj.conf`` unless noted:
 - ``CONFIG_PIGEON_FOTA_CURRENT_VERSION`` (``boards/<board>.conf``): what
   this build reports as its running version; bump it with each release so
   it matches the version the image is uploaded under.
-- ``CONFIG_PIGEON_HTTPS_SEC_TAG``: the TLS security tag the CA certificate
-  in ``cert/`` is installed under; the default of 1 needs no change.
+- ``CONFIG_PIGEON_HTTPS_SEC_TAG`` (42): the TLS security tag the CA
+  certificate in ``cert/`` is installed under. Each sample pins its own,
+  because the modem's credential store outlives a reflash.
 - ESP32-C6 only (``boards/esp32c6_devkitc_hpcore.conf``): 32 KiB download
   chunks, download resume, a bounded attempt budget per firmware target and
   reboot-on-fatal, the set that completes a download on that board.
@@ -130,7 +131,7 @@ A first poll against the platform, here on native_sim::
   <inf> shadow: Reported current_config back to platform at v1
   <inf> shadow: Next shadow poll in 60 s
 
-A Feather adds ``Provisioning CA certificate, sec_tag 1`` before the
+A Feather adds ``Provisioning CA certificate, sec_tag 42`` before the
 interface comes up, and ``Powering off modem`` before any reboot. Once the
 shadow has converged, later polls log ``Shadow already converged at version
 N; nothing to apply`` instead of applying and reporting; that is expected.

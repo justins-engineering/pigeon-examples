@@ -81,8 +81,9 @@ The sample's own options, all in ``prj.conf`` unless noted:
   anything the allowlist does not name. The allowlist here is
   ``kernel version,kernel uptime``; a command the image does not register
   answers ``-ENOEXEC`` however it is spelled.
-- ``CONFIG_PIGEON_HTTPS_SEC_TAG``: the TLS security tag the CA certificate in
-  ``cert/`` is installed under; the default of 1 needs no change.
+- ``CONFIG_PIGEON_HTTPS_SEC_TAG`` (43): the TLS security tag the CA certificate
+  in ``cert/`` is installed under. Each sample pins its own, because the
+  modem's credential store outlives a reflash.
 - ESP32-C6 only (``boards/esp32c6_devkitc_hpcore.conf``): reboot on a fatal
   error and a wedge watchdog, because a long-lived socket on that board is
   what exposes a rare assert inside the closed-source WiFi driver.
@@ -138,7 +139,7 @@ The console messages to look for, in the order a healthy boot produces them:
 
 - ``Bringing network interface up``, then ``Connecting to the network``, then
   ``Network connected``. A Feather provisions the CA into the modem first and
-  logs ``Provisioning CA certificate, sec_tag 1`` before any of it.
+  logs ``Provisioning CA certificate, sec_tag 43`` before any of it.
 - ``Pigeon tracking instance ready``, and the endpoint the transport resolved
   to. A wrong endpoint is visible here rather than three failures later.
 - ``WS: worker thread started``. The channel is opened by its own thread, so

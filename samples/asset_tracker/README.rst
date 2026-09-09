@@ -69,8 +69,9 @@ The sample's own options:
 - ``CONFIG_ASSET_TRACKER_CONNECT_MAX_ROUNDS`` and
   ``CONFIG_ASSET_TRACKER_CONNECT_BACKOFF_BASE_SEC`` / ``_MAX_SEC``: how hard the
   device tries to reach the network before rebooting to try again from cold.
-- ``CONFIG_PIGEON_HTTPS_SEC_TAG``: the TLS security tag the CA certificate in
-  ``cert/`` is installed under; the default of 1 needs no change.
+- ``CONFIG_PIGEON_HTTPS_SEC_TAG`` (44): the TLS security tag the CA certificate
+  in ``cert/`` is installed under. Each sample pins its own, because the
+  modem's credential store outlives a reflash.
 
 ``shadow.c`` understands these ``target_config`` keys: ``log`` (bool, silences
 or restores logging), ``telemetry_interval`` (seconds between polls) and
@@ -136,7 +137,7 @@ A first poll against the platform, here on native_sim::
   <inf> shadow: Shadow already converged at version 5; nothing to apply
   <inf> shadow: Next shadow poll in 60 s
 
-A Feather adds ``Provisioning CA certificate, sec_tag 1`` before the interface
+A Feather adds ``Provisioning CA certificate, sec_tag 44`` before the interface
 comes up, and logs ``GNSS started`` instead of the simulated track. Until it
 fixes, each poll reports ``gps_fix_quality=0`` with the satellites it can see
 and no position, which is what a device that has not found the sky looks like.

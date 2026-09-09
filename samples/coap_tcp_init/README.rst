@@ -67,8 +67,9 @@ The sample's own options:
 - ``CONFIG_PIGEON_COAP_TRANSPORT_TCP`` (``prj.conf``): RFC 8323 framing on a
   TLS stream, with TCP owning reliability. The library checks the endpoint's
   scheme against it and refuses to start on a mismatch.
-- ``CONFIG_PIGEON_COAP_SEC_TAG``: the security tag the library registers the
-  PSK under; the default of 1 needs no change.
+- ``CONFIG_PIGEON_COAP_SEC_TAG`` (46): the security tag the library registers
+  the PSK under. Each sample pins its own, because the modem's credential
+  store outlives a reflash.
 - ``set(SAMPLE_TLS psk)`` in ``CMakeLists.txt``, before it includes
   ``../common/app.cmake``: pulls in ``../common/boards/tls-psk.conf``, the
   mbedTLS key exchange and PSA algorithms a pre-shared key needs, on the boards
@@ -149,7 +150,7 @@ version equals its target version.
 Troubleshooting
 ---------------
 
-- ``No TLS credential found with tag 1``: the PSK keys are missing from
+- ``No TLS credential found with tag 46``: the PSK keys are missing from
   ``prj.local.conf``. An empty value means "no key supplied", so the build
   succeeds and only the handshake fails.
 - ``CONFIG_PIGEON_ENDPOINT scheme mismatch``: the endpoint is still in its

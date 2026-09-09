@@ -76,9 +76,10 @@ The sample's own options:
 - ``CONFIG_MQTT_INIT_PIGEON_ID`` (``Kconfig``): the pigeon id. It is the
   CONNECT client id and username, and on a PSK session the handshake identity
   too; the broker refuses a session whose three copies of it disagree.
-- ``CONFIG_PIGEON_MQTT_SEC_TAG``: the security tag the session's credentials
-  live under, whether the library registered the PSK there or ``main.c``
-  installed the CA; the default of 1 needs no change.
+- ``CONFIG_PIGEON_MQTT_SEC_TAG`` (47): the security tag the session's
+  credentials live under, whether the library registered the PSK there or
+  ``main.c`` installed the CA. Each sample pins its own, because the modem's
+  credential store outlives a reflash.
 - ``CONFIG_MQTT_KEEPALIVE`` (``prj.conf``): 60 s here. A device that sleeps
   between reports wants it raised; the broker honours up to 30 minutes and
   closes the session after 1.5x that silence.
@@ -176,7 +177,7 @@ A first session, here on native_sim against a local broker::
 ``MQTT TLS ciphersuite`` is read off the socket rather than assumed: what a
 constrained build offers comes from its PSA wants, and which one is used is
 the broker's choice among them; a certificate session lands on an ECDHE-ECDSA
-suite instead. A Feather adds ``Provisioning CA certificate, sec_tag 1``
+suite instead. A Feather adds ``Provisioning CA certificate, sec_tag 47``
 before the interface comes up on a certificate build, and ``Powering off
 modem`` before any reboot.
 
