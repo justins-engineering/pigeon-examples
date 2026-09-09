@@ -109,6 +109,10 @@ int net_install_ca(int sec_tag, const char* pem, size_t len) {
 }
 
 int net_connect(void) {
+  /* A connect that lands after the previous attempt timed out would otherwise
+   * satisfy this one against an interface that is already going down. */
+  k_sem_reset(&connected_sem);
+
   net_mgmt_init_event_callback(&l4_cb, l4_event_handler, L4_EVENT_MASK);
   net_mgmt_add_event_callback(&l4_cb);
   net_mgmt_init_event_callback(&conn_cb, conn_event_handler, CONN_LAYER_EVENT_MASK);
