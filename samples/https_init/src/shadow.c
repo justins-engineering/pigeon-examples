@@ -172,7 +172,19 @@ int shadow_sync(void) {
    * old image and stops trying. */
   bool firmware_unconverged = false;
 
-  if (pigeon_fota_update_available(&target.firmware)) {
+  if (!pigeon_fota_update_available(&target.firmware)) {
+    /* Running what is offered, so release any budget still held against it and
+     * let a later re-offer of the same version start full. */
+    pigeon_fota_attempts_clear();
+  } else if (!pigeon_fota_attempt_allowed(&target.firmware, doc.target_version)) {
+    LOG_ERR(
+        "FOTA: attempt budget spent for firmware %s at shadow v%d; not downloading it again "
+        "until the shadow is written anew",
+        target.firmware.version, doc.target_version
+    );
+    target.firmware = current_config.firmware;
+    firmware_unconverged = true;
+  } else {
     LOG_WRN(
         "Shadow v%d requests firmware %s (currently running %s); starting FOTA download",
         doc.target_version, target.firmware.version, CONFIG_PIGEON_FOTA_CURRENT_VERSION
