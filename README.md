@@ -72,8 +72,9 @@ which `samples/common/app.cmake` adds as an extra Zephyr module, so an edit ther
 the next build with no commit and no `west update`. One checkout serves both topdirs, which is why
 the second names the first's rather than cloning again.
 
-Building for the ESP32-C6 needs two more one-time steps, `west blobs fetch hal_espressif` and
-`west packages pip --install`. See [docs/esp32c6.md](docs/esp32c6.md) for what each one is for.
+Building for the ESP32-C6 needs two more one-time steps, `west packages pip --install` and then
+`west blobs fetch hal_espressif`. That order matters: the fetcher needs packages the first step
+installs. See [docs/esp32c6.md](docs/esp32c6.md) for what each one is for.
 
 Activate the environment in every terminal that builds:
 
