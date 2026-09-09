@@ -1,3 +1,19 @@
 rsource "../Kconfig.sysbuild.signing"
 
+# An nRF91 application image is linked into a slot a bootloader jumps to, so a
+# mass-erased Feather with nothing at address zero never starts. Every other
+# board here boots its own image directly.
+choice BOOTLOADER
+	default BOOTLOADER_MCUBOOT if SOC_SERIES_NRF91
+	default BOOTLOADER_NONE
+endchoice
+
+if BOOTLOADER_MCUBOOT
+
+choice BOOT_SIGNATURE_TYPE
+	default BOOT_SIGNATURE_TYPE_ECDSA_P256
+endchoice
+
+endif
+
 source "share/sysbuild/Kconfig"

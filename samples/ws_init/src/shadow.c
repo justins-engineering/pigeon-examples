@@ -9,41 +9,33 @@
 #include <zephyr/logging/log_ctrl.h>
 #include <zephyr/sys/printk.h>
 
-#include "net/wifi_connection_manager.h"
+#include "net_connect.h"
 
 LOG_MODULE_REGISTER(shadow);
 
-#if defined(CONFIG_PIGEON_WS)
-/* Signaled by shadow_ws_event_cb() (called from the WS worker thread, see
- * pigeon_ws_start()'s docs) to wake shadow_loop() immediately instead of
- * waiting out its telemetry_interval sleep. */
-K_SEM_DEFINE(shadow_wakeup, 0, 1);
+/* Given by the WebSocket worker thread, taken by shadow_loop(). */
+static K_SEM_DEFINE(shadow_wakeup, 0, 1);
 
-void shadow_ws_event_cb(enum pigeon_ws_event ev, const struct pigeon_shadow_doc *shadow) {
-  ARG_UNUSED(shadow); /* v1: a push is a wakeup, not a data path -- shadow_sync()
-                        * always re-fetches over HTTPS rather than consuming the
-                        * pushed doc directly (see shadow_loop()'s doc). */
+void shadow_ws_event_cb(enum pigeon_event ev, const struct pigeon_shadow_doc* shadow) {
+  /* The pushed document only lives for this callback, so the loop re-fetches
+   * over HTTPS rather than copying it out. A push is a wakeup, not a payload. */
+  ARG_UNUSED(shadow);
 
   switch (ev) {
-    case PIGEON_WS_EVENT_CONNECTED:
-      /* The server sends no state snapshot on accept, so a fresh (or
-       * reconnected) socket may mean the platform moved on while we were
-       * disconnected -- re-sync now rather than waiting for the next tick. */
-    case PIGEON_WS_EVENT_SHADOW_UPDATE:
+    case PIGEON_EVENT_CONNECTED:
+      /* The server sends no snapshot on accept, so a fresh socket may mean
+       * the platform moved on while this device was away. */
+    case PIGEON_EVENT_SHADOW_UPDATE:
       k_sem_give(&shadow_wakeup);
       break;
-    case PIGEON_WS_EVENT_DISCONNECTED:
-      /* Purely informational -- the periodic tick remains the safety net
-       * while the socket is down, nothing to wake up for here. */
+    case PIGEON_EVENT_DISCONNECTED:
+      /* The poll interval is the safety net while the socket is down. */
       break;
   }
 }
-#endif /* CONFIG_PIGEON_WS */
 
-/* Same struct/decode pattern as https_init's shadow.c, minus the "firmware"
- * key: this sample has no MCUboot/sysbuild setup (see README), so
- * CONFIG_PIGEON_FOTA isn't enabled here and there's nowhere to apply a
- * firmware update to yet even if the shadow requested one. */
+/* target_config is opaque JSON to the library; this application decides what
+ * its keys mean. */
 struct app_shadow_config {
   bool log;
   int telemetry_interval;
@@ -56,19 +48,16 @@ static const struct json_obj_descr app_shadow_config_descr[] = {
     JSON_OBJ_DESCR_PRIM(struct app_shadow_config, reboot, JSON_TOK_TRUE),
 };
 
-/* Compile-time defaults applied before the first shadow sync of this boot.
- * Not persisted across reboots (no NVS/settings backing yet), so every boot
- * re-applies (and logs) the full delta from these defaults to the platform's
- * current target. */
+/* Defaults applied before the first sync of a boot. Nothing persists across
+ * reboots, so every boot re-applies the platform's target from here. */
 static struct app_shadow_config current_config = {
     .log = false,
     .telemetry_interval = 60,
     .reboot = false,
 };
 
-/* Sets every registered module's runtime filter level in one call, so the
- * shadow's "log" field can actually silence/restore logging rather than just
- * being logged and ignored. NULL backend applies to all backends+frontend. */
+/* One call covers every module, so the shadow's "log" field really silences
+ * and restores output. */
 static void set_all_log_levels(uint32_t level) {
   uint32_t module_count = log_src_cnt_get(Z_LOG_LOCAL_DOMAIN_ID);
 
@@ -77,16 +66,12 @@ static void set_all_log_levels(uint32_t level) {
   }
 }
 
-/* Reports uptime and this boot's poll count via the device telemetry path:
- * pigeon_telemetry_set() per key, then ONE pigeon_telemetry_flush() -- both
- * keys ride a single report to <endpoint>/telemetry (one WS telemetry
- * frame when the socket is up, falling back to one HTTPS POST -- see
- * pigeon_telemetry_flush() in pigeon.h).
- * Unrelated to shadow config ack (see pigeon_shadow_report() below).
- * poll_count restarting from 1 doubles as a cheap reboot indicator. */
+/* Both keys ride one telemetry report, sent as a WebSocket frame while the
+ * socket is up and an HTTPS POST otherwise. poll_count restarting at 1
+ * doubles as a reboot indicator on the dashboard. */
 static void report_telemetry(void) {
   static unsigned int poll_count;
-  char buf[16];
+  char buf[21];
 
   snprintk(buf, sizeof(buf), "%lld", (long long)(k_uptime_get() / 1000));
 
@@ -128,16 +113,15 @@ int shadow_sync(void) {
     return 0;
   }
 
-  /* target_config is only valid until the next pigeon_shadow_get() call, and
-   * json_obj_parse() modifies its input in place, so work on a local copy. */
-  char config_buf[256];
+  /* json_obj_parse() edits its input, and target_config only lives until the
+   * next fetch. Sized to the library's own config limit. */
+  char config_buf[320];
 
   strncpy(config_buf, doc.target_config, sizeof(config_buf) - 1);
   config_buf[sizeof(config_buf) - 1] = '\0';
 
-  /* Seed with the current values (reboot always defaults back to false: it's
-   * a one-shot command, not a persistent field) so keys absent from
-   * target_config (a partial update) retain their current value. */
+  /* Keys absent from a partial update keep their current value. reboot is a
+   * one-shot command and always starts false. */
   struct app_shadow_config target = current_config;
   target.reboot = false;
 
@@ -174,11 +158,7 @@ int shadow_sync(void) {
       current_config.log ? "true" : "false", current_config.telemetry_interval
   );
 
-  /* Confirm what was actually applied back to the platform, same
-   * report-before-reboot ordering as https_init's shadow.c: the shadow
-   * must converge on the platform side before this device drops off the
-   * network for the reboot below. */
-  char report_buf[128];
+  char report_buf[256];
   int encode_err = json_obj_encode_buf(
       app_shadow_config_descr, ARRAY_SIZE(app_shadow_config_descr), &current_config, report_buf,
       sizeof(report_buf)
@@ -196,24 +176,15 @@ int shadow_sync(void) {
     }
   }
 
-  /* Demonstrates command-via-shadow: "reboot" is a one-shot command rather
-   * than a persistent field, so it's deliberately excluded from
-   * current_config above -- otherwise it would never be seen as "changed"
-   * again and the device would reboot on every single poll once set true.
-   *
-   * Disconnects WiFi gracefully first: unlike https_init's nRF91 modem,
-   * ESP32-C6 has no reset-loop protection to trip, but leaving the AP
-   * holding a stale association until it times out is still worth avoiding
-   * with a clean conn_mgr teardown. */
+  /* "reboot" is a command, not state: kept out of current_config so it is
+   * never seen as unchanged and re-run on every poll. The CLOSE frame and the
+   * network teardown both come first, so the server sees a clean disconnect
+   * instead of waiting out a dead socket, and a modem is powered off rather
+   * than reset. */
   if (target.reboot) {
     LOG_WRN("Shadow v%d requested reboot; disconnecting and rebooting now", doc.target_version);
-#if defined(CONFIG_PIGEON_WS)
-    /* Graceful CLOSE before the network goes down, same reasoning as the
-     * WiFi teardown right below: let the server see a clean disconnect
-     * instead of discovering the drop only via a dead ping/idle timeout. */
     pigeon_ws_stop();
-#endif
-    wifi_disconnect();
+    net_disconnect();
     pigeon_reboot();
   }
 
@@ -224,15 +195,9 @@ void shadow_loop(void) {
   while (1) {
     shadow_sync();
 
-#if defined(CONFIG_PIGEON_WS)
-    /* telemetry_interval remains the safety-net poll period while the WS
-     * socket is down; a pushed shadow_update or a fresh CONNECTED event
-     * (see shadow_ws_event_cb()) collapses the wait to ~instant instead. */
-    LOG_INF("Next shadow poll in <=%d s (or sooner on WS push)", current_config.telemetry_interval);
+    /* The interval is a ceiling, not a cadence: a pushed shadow or a fresh
+     * connection collapses the wait to the round trip that carried it. */
+    LOG_INF("Next shadow poll in <=%d s, sooner on a push", current_config.telemetry_interval);
     k_sem_take(&shadow_wakeup, K_SECONDS(current_config.telemetry_interval));
-#else
-    LOG_INF("Next shadow poll in %d s", current_config.telemetry_interval);
-    k_sleep(K_SECONDS(current_config.telemetry_interval));
-#endif
   }
 }

@@ -1,0 +1,60 @@
+/* Modem trace UART; this board's own partition file already carves out the
+ * trace buffer, and its i2c1 is disabled by default. */
+&uart1 {
+  status = "okay";
+  current-speed = <1000000>;
+};
+
+&uart0 {
+  status = "okay";
+  compatible = "nordic,nrf-uarte";
+  current-speed = <115200>;
+  pinctrl-0 = <&uart0_default>;
+  pinctrl-1 = <&uart0_sleep>;
+  pinctrl-names = "default", "sleep";
+};
+
+/* The stock 256/192 KiB secure/non-secure split leaves TF-M most of its
+ * share unused while this application overflows its own. The slot total is
+ * unchanged, so MCUboot's overlay needs nothing. */
+/delete-node/ &slot0_s_partition;
+/delete-node/ &slot0_ns_partition;
+
+&slot0_partition {
+  slot0_s_partition: partition@0 {
+    compatible = "zephyr,mapped-partition";
+    label = "image-0-secure";
+    reg = <0x00000000 0x00020000>;
+  };
+
+  slot0_ns_partition: partition@20000 {
+    compatible = "zephyr,mapped-partition";
+    label = "image-0-nonsecure";
+    reg = <0x00020000 0x00050000>;
+  };
+};
+
+/delete-node/ &slot1_s_partition;
+/delete-node/ &slot1_ns_partition;
+
+&slot1_partition {
+  slot1_s_partition: partition@0 {
+    compatible = "zephyr,mapped-partition";
+    label = "image-1-secure";
+    reg = <0x00000000 0x00020000>;
+  };
+
+  slot1_ns_partition: partition@20000 {
+    compatible = "zephyr,mapped-partition";
+    label = "image-1-nonsecure";
+    reg = <0x00020000 0x00050000>;
+  };
+};
+
+/ {
+  chosen {
+    zephyr,console = &uart0;
+    zephyr,shell-uart = &uart0;
+    nordic,modem-trace-uart = &uart1;
+  };
+};

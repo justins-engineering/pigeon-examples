@@ -3,23 +3,32 @@
 #include <zephyr/logging/log.h>
 
 #include "heap_monitor.h"
-#include "net/wifi_connection_manager.h"
+#include "net_connect.h"
 #include "shadow.h"
 
-#if defined(CONFIG_PIGEON_WS)
 LOG_MODULE_REGISTER(main);
-#endif
+
+/* The platform's root CA. The modem takes PEM; mbedTLS wants it terminated. */
+static const char ca_cert[] = {
+#include "GTS_Root_R4.crt.hex"
+    IF_ENABLED(CONFIG_TLS_CREDENTIALS, (0x00))
+};
+
+BUILD_ASSERT(sizeof(ca_cert) < KB(4), "the modem's credential store caps a certificate at 4 KiB");
 
 int main(void) {
-  int err = wifi_connect();
+  int err = net_install_ca(CONFIG_PIGEON_HTTPS_SEC_TAG, ca_cert, sizeof(ca_cert));
   if (err) {
     return err;
   }
 
-  /* Endpoint and token come from CONFIG_PIGEON_ENDPOINT/CONFIG_PIGEON_TOKEN
-   * (see prj.local.conf) instead of this struct -- same convention as
-   * https_init's main.c. device_id is log-only, see the comment there for
-   * why. */
+  err = net_connect();
+  if (err) {
+    return err;
+  }
+
+  /* The endpoint and token come from Kconfig. device_id only names this
+   * device in its own logs; the platform identifies it by its token. */
   struct pigeon_config config = {
       .device_id = "pigeon-ws-sample",
       .connector = {.type = PIGEON_CONNECTOR_HTTPS},
@@ -27,31 +36,21 @@ int main(void) {
 
   err = pigeon_init(&config);
   if (err) {
-    wifi_disconnect();
+    net_disconnect();
     return err;
   }
 
-#if defined(CONFIG_PIGEON_WS)
-  /* Persistent push channel alongside the HTTPS connector above (not a
-   * replacement for it -- see pigeon's zephyr/Kconfig: CONFIG_PIGEON_WS
-   * depends on CONFIG_PIGEON_CONNECTOR_HTTPS). A failure here just means
-   * shadow_loop() falls back to plain polling for this boot; it isn't
-   * fatal to startup. */
+  /* The socket only makes the loop react sooner, so a failure here costs
+   * latency rather than function: shadow_loop() keeps polling over HTTPS. */
   err = pigeon_ws_start(shadow_ws_event_cb);
   if (err) {
-    LOG_WRN("pigeon_ws_start() failed: %d (falling back to HTTPS polling)", err);
+    LOG_WRN("pigeon_ws_start() failed: %d; falling back to HTTPS polling", err);
   }
-#endif
 
-  /* Soak-test instrumentation for the recurring real-hardware
-   * "esp32c6_wifi_adapter: memory allocation failed" reports -- see
-   * heap_monitor.h. Started after wifi_connect()/pigeon_init() so the first
-   * sample already reflects post-connect steady state, not boot-time churn. */
   heap_monitor_start();
 
-  /* shadow_loop() polls forever; it does not return under normal
-   * operation. */
+  /* Polls the shadow and reports telemetry until told to reboot. */
   shadow_loop();
 
-  return wifi_disconnect();
+  return net_disconnect();
 }
