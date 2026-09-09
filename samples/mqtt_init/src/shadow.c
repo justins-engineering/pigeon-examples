@@ -115,8 +115,8 @@ int shadow_sync(void) {
   }
 
   /* json_obj_parse() edits its input, and target_config only lives until the
-   * next push. Sized to the library's own config limit. */
-  char config_buf[320];
+   * next push. */
+  char config_buf[CONFIG_PIGEON_SHADOW_CONFIG_MAX];
 
   strncpy(config_buf, doc.target_config, sizeof(config_buf) - 1);
   config_buf[sizeof(config_buf) - 1] = '\0';

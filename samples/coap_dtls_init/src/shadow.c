@@ -92,8 +92,8 @@ int shadow_sync(void) {
   }
 
   /* json_obj_parse() edits its input, and target_config only lives until the
-   * next fetch. Sized to the library's own config limit. */
-  char config_buf[320];
+   * next fetch. */
+  char config_buf[CONFIG_PIGEON_SHADOW_CONFIG_MAX];
 
   strncpy(config_buf, doc.target_config, sizeof(config_buf) - 1);
   config_buf[sizeof(config_buf) - 1] = '\0';
@@ -138,7 +138,7 @@ int shadow_sync(void) {
 
   /* current_version is whatever this device reports, so the report goes out
    * even if a newer target is already pending by the time it lands. */
-  char report_buf[256];
+  char report_buf[128];
   int encode_err = json_obj_encode_buf(
       app_shadow_config_descr, ARRAY_SIZE(app_shadow_config_descr), &current_config, report_buf,
       sizeof(report_buf)
