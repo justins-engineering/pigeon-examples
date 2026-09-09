@@ -10,15 +10,12 @@
 #include <zephyr/sys/printk.h>
 
 #include "gnss.h"
-#include "net/connection_manager.h"
+#include "net_connect.h"
 
 LOG_MODULE_REGISTER(shadow);
 
-/* pigeon_shadow_doc's target_config is an opaque JSON string as far as the
- * pigeon library is concerned (see pigeon.h); this app decides what the
- * fields inside it mean and how to apply them -- same
- * log/telemetry_interval/reboot convention as https_init's shadow.c (no
- * "firmware" key here -- this sample doesn't do FOTA, see its README). */
+/* target_config is opaque JSON to the library; this application decides what
+ * its keys mean. */
 struct app_shadow_config {
   bool log;
   int telemetry_interval;
@@ -31,19 +28,16 @@ static const struct json_obj_descr app_shadow_config_descr[] = {
     JSON_OBJ_DESCR_PRIM(struct app_shadow_config, reboot, JSON_TOK_TRUE),
 };
 
-/* Compile-time defaults applied before the first shadow sync of this boot.
- * Not persisted across reboots (no NVS/settings backing yet), so every boot
- * re-applies (and logs) the full delta from these defaults to the platform's
- * current target -- same convention as https_init's shadow.c. */
+/* Defaults applied before the first sync of a boot. Nothing persists across
+ * reboots, so every boot re-applies the platform's target from here. */
 static struct app_shadow_config current_config = {
     .log = false,
     .telemetry_interval = 60,
     .reboot = false,
 };
 
-/* Sets every registered module's runtime filter level in one call, so the
- * shadow's "log" field can actually silence/restore logging rather than just
- * being logged and ignored. NULL backend applies to all backends+frontend. */
+/* One call covers every module, so the shadow's "log" field really silences
+ * and restores output. */
 static void set_all_log_levels(uint32_t level) {
   uint32_t module_count = log_src_cnt_get(Z_LOG_LOCAL_DOMAIN_ID);
 
@@ -52,37 +46,17 @@ static void set_all_log_levels(uint32_t level) {
   }
 }
 
-/* Queues one telemetry key (pigeon_telemetry_set(), latest-value-per-key)
- * WITHOUT flushing -- shadow_sync() flushes the whole cycle's batch in one
- * pigeon_telemetry_flush() after queue_uptime()/queue_position() below have
- * queued everything, so all (up to 8) keys ride a single POST to
- * <endpoint>/telemetry rather than one POST per key. Over LTE-M that's
- * one TLS connect/request/teardown per report cycle instead of up to
- * eight. Not
- * the shadow config-ack endpoint -- see pigeon_telemetry_flush()'s own doc
- * comment in pigeon.h. */
-static void queue_metric(const char *key, const char *val) {
-  int err = pigeon_telemetry_set(key, val);
+static void queue_metric(const char* key, const char* value) {
+  int err = pigeon_telemetry_set(key, value);
 
   if (err) {
-    LOG_WRN("Failed to queue telemetry '%s'='%s': %d", key, val, err);
+    LOG_WRN("Failed to queue telemetry '%s': %d", key, err);
   }
 }
 
-static void queue_uptime(void) {
-  char uptime_s[16];
-
-  snprintk(uptime_s, sizeof(uptime_s), "%lld", (long long)(k_uptime_get() / 1000));
-  queue_metric("uptime_s", uptime_s);
-}
-
-/* Reports the latest GNSS (or simulated) position as a handful of numeric
- * telemetry keys -- gps_sats/gps_fix_quality are always reported, even with
- * no fix at all, so a dashboard can distinguish "searching, 0 sats" from
- * "searching, 6 sats tracked" from "converged" rather than just seeing
- * nothing. The position fields themselves (lat/lon/alt/speed/heading) are
- * only meaningful -- and only reported -- once fix_quality says there's an
- * actual fix (real or simulated) to report. */
+/* Fix quality and satellite count are reported even with no fix, so a
+ * dashboard can tell a device searching in a basement from a silent one. The
+ * position itself is only meaningful once there is a fix. */
 static void queue_position(void) {
   struct tracker_position pos;
 
@@ -97,7 +71,7 @@ static void queue_position(void) {
   queue_metric("gps_sats", buf);
 
   if (pos.fix_quality == TRACKER_FIX_NONE) {
-    LOG_INF("No GNSS fix yet (%d satellites tracked); position not reported", pos.sats);
+    LOG_INF("No fix yet, %d satellites tracked; position not reported", pos.sats);
     return;
   }
 
@@ -118,9 +92,26 @@ static void queue_position(void) {
 
   LOG_INF(
       "Position (%s): %.6f,%.6f alt=%.1fm speed=%.2fm/s heading=%.1fdeg sats=%d",
-      pos.fix_quality == TRACKER_FIX_SIMULATED ? "SIMULATED" : "fix", pos.latitude, pos.longitude,
+      pos.fix_quality == TRACKER_FIX_SIMULATED ? "simulated" : "fix", pos.latitude, pos.longitude,
       (double)pos.altitude_m, (double)pos.speed_mps, (double)pos.heading_deg, pos.sats
   );
+}
+
+/* Every key of a cycle rides one report, which over LTE-M is one TLS
+ * handshake instead of eight. */
+static void report_telemetry(void) {
+  char buf[21];
+
+  snprintk(buf, sizeof(buf), "%lld", (long long)(k_uptime_get() / 1000));
+  queue_metric("uptime_s", buf);
+
+  queue_position();
+
+  int err = pigeon_telemetry_flush();
+
+  if (err) {
+    LOG_WRN("Telemetry report failed: %d; the queued keys wait for the next poll", err);
+  }
 }
 
 int shadow_sync(void) {
@@ -137,30 +128,22 @@ int shadow_sync(void) {
       doc.current_version, doc.updated_at
   );
 
-  queue_uptime();
-  queue_position();
-
-  int flush_err = pigeon_telemetry_flush();
-
-  if (flush_err) {
-    LOG_WRN("Telemetry flush failed: %d (queued keys kept for next cycle)", flush_err);
-  }
+  report_telemetry();
 
   if (doc.target_version == doc.current_version) {
     LOG_INF("Shadow already converged at version %d; nothing to apply", doc.current_version);
     return 0;
   }
 
-  /* target_config is only valid until the next pigeon_shadow_get() call, and
-   * json_obj_parse() modifies its input in place, so work on a local copy. */
+  /* json_obj_parse() edits its input, and target_config only lives until the
+   * next fetch. Sized to the library's own config limit. */
   char config_buf[320];
 
   strncpy(config_buf, doc.target_config, sizeof(config_buf) - 1);
   config_buf[sizeof(config_buf) - 1] = '\0';
 
-  /* Seed with the current values (reboot always defaults back to false: it's
-   * a one-shot command, not a persistent field) so keys absent from
-   * target_config (a partial update) retain their current value. */
+  /* Keys absent from a partial update keep their current value. reboot is a
+   * one-shot command and always starts false. */
   struct app_shadow_config target = current_config;
   target.reboot = false;
 
@@ -197,10 +180,6 @@ int shadow_sync(void) {
       current_config.log ? "true" : "false", current_config.telemetry_interval
   );
 
-  /* Confirm what was actually applied back to the platform -- see
-   * pigeon_shadow_report()'s doc comment in pigeon.h and https_init's
-   * shadow.c for why this is a separate call from the telemetry reports
-   * above. */
   char report_buf[128];
   int encode_err = json_obj_encode_buf(
       app_shadow_config_descr, ARRAY_SIZE(app_shadow_config_descr), &current_config, report_buf,
@@ -219,16 +198,13 @@ int shadow_sync(void) {
     }
   }
 
-  /* "reboot" is a one-shot command, deliberately excluded from
-   * current_config above so it isn't seen as "changed" (and re-fire) on
-   * every subsequent poll. Gracefully powers the modem off first
-   * (lte_disconnect() -> lte_lc_power_off()) before rebooting -- an
-   * ungraceful reset trips the nRF91 modem's reset-loop protection and
-   * refuses LTE attach for 30 minutes, see this repo's CLAUDE.md "Modem
-   * reset safety" and connection_manager.c. */
+  /* "reboot" is a command, not state: kept out of current_config so it is
+   * never seen as unchanged and re-run on every poll. net_disconnect() comes
+   * first because a modem reset without a graceful power-off trips its
+   * reset-loop protection. */
   if (target.reboot) {
     LOG_WRN("Shadow v%d requested reboot; disconnecting and rebooting now", doc.target_version);
-    lte_disconnect();
+    net_disconnect();
     pigeon_reboot();
   }
 

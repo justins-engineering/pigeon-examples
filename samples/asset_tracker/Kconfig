@@ -1,126 +1,81 @@
-#
-# asset_tracker: GNSS + cellular reference sample.
-#
-
 menu "Asset tracker sample"
 
 config ASSET_TRACKER_SIM_GPS
-  bool "Simulate GPS fixes instead of using real GNSS"
-  default n
+  bool "Report a simulated track instead of real GNSS fixes" if SOC_SERIES_NRF91
+  default y if !SOC_SERIES_NRF91
   help
-    Emits a synthetic, clearly-marked moving track (a small circuit around
-    a configurable base coordinate, see ASSET_TRACKER_SIM_* below) instead
-    of talking to the nRF91's real GNSS receiver. GNSS indoors will very
-    likely never acquire a real fix -- this lets the end-to-end telemetry
-    pipeline and dashboard be exercised without a clear sky view (indoors,
-    CI, a desk). gps_fix_quality reports 2 ("simulated") whenever this is
-    on, rather than 0 ("no fix")/1 ("real fix"), so a real dashboard can
-    always tell simulated data apart from a genuine fix. Off by default --
-    a tracker sample should talk to real GNSS unless a reader deliberately
-    opts into the indoor demo path.
+    A real receiver exists only on the nRF91 modem, so every other board
+    reports a fabricated circuit around the base coordinate below. On a
+    Feather it is the indoor option, where GNSS will very likely never fix.
+    A simulated sample reports gps_fix_quality 2 rather than 1, so a
+    dashboard can never mistake it for a real fix.
 
 if ASSET_TRACKER_SIM_GPS
 
 config ASSET_TRACKER_SIM_BASE_LAT
-  string "Simulated track base latitude (decimal degrees)"
+  string "Simulated track centre latitude (decimal degrees)"
   default "45.523064"
-  help
-    Center of the simulated circuit (default: a point in Portland, OR --
-    an arbitrary but plausible coordinate, not this device's actual
-    location). See gnss.c's sim_track_step().
 
 config ASSET_TRACKER_SIM_BASE_LON
-  string "Simulated track base longitude (decimal degrees)"
+  string "Simulated track centre longitude (decimal degrees)"
   default "-122.676483"
 
 config ASSET_TRACKER_SIM_RADIUS_M
-  int "Simulated circuit radius (meters)"
+  int "Simulated circuit radius (metres)"
   default 50
   help
-    Radius of the simulated circular track around the base coordinate.
-    50m is small enough to look like a single-parking-lot asset (e.g. a
-    yard tractor, a job-site generator) rather than a highway vehicle.
+    Small enough to read as an asset moving around one yard rather than a
+    vehicle on a highway.
 
 config ASSET_TRACKER_SIM_PERIOD_SEC
-  int "Simulated circuit period (seconds per full lap)"
-  default 300
+  int "Seconds per simulated lap"
   range 10 86400
+  default 300
   help
-    How long one full simulated lap takes. Combined with
-    ASSET_TRACKER_SIM_RADIUS_M this determines the simulated gps_speed_mps
-    reported alongside the position.
+    With the radius above, this is what sets the reported gps_speed_mps.
 
 endif # ASSET_TRACKER_SIM_GPS
 
 if !ASSET_TRACKER_SIM_GPS
 
 config ASSET_TRACKER_GNSS_FIX_INTERVAL_SEC
-  int "GNSS periodic fix interval (seconds)"
+  int "Seconds between periodic GNSS fixes"
   range 10 65535
   default 120
   help
-    Passed to nrf_modem_gnss_fix_interval_set(). Periodic (not continuous)
-    navigation mode: an asset tracker cares about "where is it now, and
-    where was it a couple minutes ago", not a continuous high-rate track,
-    and periodic mode gives LTE more of the shared radio between fixes
-    than continuous mode would.
+    Periodic navigation leaves the modem more of the shared radio for LTE
+    between fixes than continuous mode does.
 
 config ASSET_TRACKER_GNSS_FIX_RETRY_SEC
-  int "GNSS fix retry timeout (seconds)"
+  int "Seconds GNSS may search before abandoning one fix"
   range 0 65535
   default 120
   help
-    Upper bound on how long GNSS is allowed to search per attempt before
-    giving up until the next fix_interval -- see
-    nrf_modem_gnss_fix_retry_set(). Matters most indoors, where a fix may
-    never come: without this, GNSS would keep the receiver running
-    indefinitely, burning power on a search that was never going to
-    succeed this attempt.
+    Unbounded, the receiver keeps searching until the next interval even
+    where a fix can never come.
 
 endif # !ASSET_TRACKER_SIM_GPS
 
-config ASSET_TRACKER_LTE_CONNECT_MAX_ROUNDS
-  int "Bounded lte_connect() retry rounds before a self-reboot"
+config ASSET_TRACKER_CONNECT_MAX_ROUNDS
+  int "Network connect attempts before rebooting"
   default 5
   help
-    A boot that hits the nRF91 modem's 30-minute reset-loop restriction
-    (see this repo's CLAUDE.md "Modem reset safety") makes lte_connect()
-    fail/time out exactly once. Returning immediately on that single
-    failure leaves the device fully idle (no LTE, no telemetry, no
-    recovery) for whatever's left of the restriction -- a multi-minute-
-    to-multi-hour silent gap that no watchdog can catch
-    (CONFIG_PIGEON_WATCHDOG only feeds on a successful telemetry report,
-    which never happens if LTE never comes up at all). Retrying
-    lte_connect() up to this many rounds, with backoff between rounds
-    (see ASSET_TRACKER_LTE_CONNECT_BACKOFF_*_SEC below), before giving up
-    and self-rebooting is more robust: a fresh boot is often enough to
-    get past a transient failure (coverage gap, a restriction that
-    expires mid-wait), and repeated bounded reboots are still strictly
-    better than a device that silently gives up forever the first time
-    LTE doesn't come up.
+    Nothing else recovers a device that never reaches the network: the
+    watchdog feeds on a successful report, and a modem inside its
+    reset-loop restriction fails to attach once and then sits idle.
 
-config ASSET_TRACKER_LTE_CONNECT_BACKOFF_BASE_SEC
-  int "Backoff base between lte_connect() retry rounds (seconds)"
+config ASSET_TRACKER_CONNECT_BACKOFF_BASE_SEC
+  int "Backoff before the second connect attempt (seconds)"
   default 30
   help
-    Doubles each round (same pattern pigeon's own CONFIG_PIGEON_WS
-    reconnect backoff uses), capped at
-    ASSET_TRACKER_LTE_CONNECT_BACKOFF_MAX_SEC. Deliberately not zero/tiny
-    -- a failed attempt is often failing for a reason that won't resolve
-    in seconds (no coverage, a modem restriction with tens of minutes
-    left), so retrying instantly would just burn power and add log noise
-    without improving the odds.
+    An attempt usually fails for a reason seconds will not clear, so the
+    first retry already waits.
 
-config ASSET_TRACKER_LTE_CONNECT_BACKOFF_MAX_SEC
-  int "Backoff ceiling between lte_connect() retry rounds (seconds)"
+config ASSET_TRACKER_CONNECT_BACKOFF_MAX_SEC
+  int "Backoff ceiling between connect attempts (seconds)"
   default 300
   help
-    5 minutes -- comfortably short enough that
-    ASSET_TRACKER_LTE_CONNECT_MAX_ROUNDS rounds of backoff (worst case,
-    with the default 5 rounds/30s base: 30+60+120+240+300 = 750s, about
-    12.5 minutes) still self-reboots well before an operator would
-    reasonably start wondering if the device fell off the network for
-    good.
+    The backoff doubles each round up to this.
 
 module = ASSET_TRACKER
 module-str = Asset tracker sample

@@ -1,25 +1,16 @@
 /** @file shadow.h
- *  @brief Fetches the device shadow from the platform, applies it locally,
- *  and reports uptime + GNSS position telemetry each poll.
+ *  @brief Shadow sync: fetch, apply, report back, plus position telemetry.
  */
 #ifndef SHADOW_H
 #define SHADOW_H
 
-/** @fn int shadow_sync(void)
- *  @brief Fetch the device shadow, apply target_config if the platform has
- *  moved to a newer version than what's already applied this boot, report
- *  uptime + the latest GNSS position (see gnss.h) as telemetry, and log
- *  what changed.
- *  @return 0 on success (whether or not an update was applied), negative
- *  error code on transport/parse failure.
- */
+/** Fetches the shadow, reports uptime and the latest position, applies a newer
+ *  target_config and reports the result. Returns 0 whether or not anything
+ *  changed, negative on a transport or parse failure. */
 int shadow_sync(void);
 
-/** @fn void shadow_loop(void)
- *  @brief Repeatedly shadow_sync(), sleeping the shadow's own
- *  telemetry_interval (seconds) between polls. Never returns under normal
- *  operation.
- */
+/** Runs shadow_sync() forever, sleeping the shadow's own telemetry_interval
+ *  between polls. */
 void shadow_loop(void);
 
 #endif
