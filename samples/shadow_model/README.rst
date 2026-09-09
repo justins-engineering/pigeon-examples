@@ -36,7 +36,7 @@ native_sim, from the ``west.yml`` topdir::
 ESP32-C6-DevKitC, from the ``west.yml`` topdir. The board's USB-JTAG port
 flashes, the CP210x port is the console::
 
-  west build -p always --sysbuild -d build -b esp32c6_devkitc/esp32c6/hpcore samples/shadow_model
+  west build -p always -d build -b esp32c6_devkitc/esp32c6/hpcore samples/shadow_model
   west flash -d build
   pyserial-miniterm /dev/ttyUSB0 115200
 

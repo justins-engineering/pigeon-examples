@@ -86,13 +86,13 @@ Activate the Python environment in every terminal first::
 
 native_sim, from the ``west.yml`` topdir. Simulated track, no bootloader::
 
-  west build -p always --sysbuild -d build -b native_sim/native/64 samples/asset_tracker
-  ./build/asset_tracker/zephyr/zephyr.exe
+  west build -p always -d build -b native_sim/native/64 samples/asset_tracker
+  ./build/zephyr/zephyr.exe
 
 ESP32-C6-DevKitC, from the ``west.yml`` topdir. Simulated track. The USB-JTAG
 port flashes, the CP210x port is the console::
 
-  west build -p always --sysbuild -d build -b esp32c6_devkitc/esp32c6/hpcore samples/asset_tracker
+  west build -p always -d build -b esp32c6_devkitc/esp32c6/hpcore samples/asset_tracker
   west flash -d build
   pyserial-miniterm /dev/ttyUSB0 115200
 
