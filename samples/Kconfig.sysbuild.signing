@@ -15,6 +15,14 @@
 # Unset leaves the built-in default alone, which is MCUboot's own published
 # development key: fine for a bench, forgeable by anyone, and warned about at
 # configure time by mcuboot-signing.cmake.
+#
+# Sysbuild copies this symbol into the application image whichever bootloader
+# is chosen, and the image's own copy of it exists only under MCUboot, so a
+# default set outside this guard warns on every board built without one.
+
+if BOOTLOADER_MCUBOOT
 
 config BOOT_SIGNATURE_KEY_FILE
 	default "$(PIGEON_BOOT_SIGNATURE_KEY_FILE)" if "$(PIGEON_BOOT_SIGNATURE_KEY_FILE)" != ""
+
+endif
