@@ -85,9 +85,9 @@ The sample's own options:
   acknowledged. Shadow reports and log chunks are QoS 1 either way.
 - ``CONFIG_PIGEON_LOG_UPLOAD`` (``prj.conf``): ships this device's logs to
   the platform as Zephyr dictionary-encoded binary. Decoding a chunk needs
-  this build's ``build/zephyr/log_dictionary.json``; a dictionary from another
-  build decodes to plausible nonsense rather than erroring, so archive it
-  alongside whatever image was flashed.
+  this build's own ``log_dictionary.json``, and one from another build decodes
+  to plausible nonsense rather than erroring; ``docs/device-logs.md`` says
+  where the file lands and how to read a chunk back.
 
 ``CMakeLists.txt`` declares both shapes, ``set(SAMPLE_TLS verify psk)``, so a
 board whose TLS runs in mbedTLS compiles both want lists in and an overlay only
@@ -142,11 +142,9 @@ probe, whose CDC-ACM port is also the console::
   west flash -d build -r probe-rs
   pyserial-miniterm /dev/ttyACM0 115200
 
-There is no platform account and no hardware in the loop for
-``scripts/test/native-sim-e2e.sh``, which runs this sample on native_sim
-against a broker and a mock edge on the build host. It needs a checkout of the
-broker (``--pigeonhole <dir>``, default ``~/pigeonhole``) and takes ``--cert``
-to run the certificate mode instead of TLS-PSK.
+``scripts/test/native-sim-e2e.sh`` runs this sample on native_sim against a
+broker and a mock platform on the build host, with no account and no hardware:
+``docs/mqtt-e2e.md`` has the commands.
 
 What you should see
 -------------------

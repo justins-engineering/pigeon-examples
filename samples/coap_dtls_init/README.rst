@@ -31,7 +31,7 @@ Configure
 Write ``samples/coap_dtls_init/prj.local.conf``; it is git-ignored and merged
 on top of every other configuration file::
 
-  CONFIG_PIGEON_ENDPOINT="coaps://coap.pidgeiot.com:5684/device/pigeons/<pigeon-id>"
+  CONFIG_PIGEON_ENDPOINT="coaps://coap.pidgeiot.com/device/pigeons/<pigeon-id>"
   CONFIG_PIGEON_COAP_TLS_PSK_IDENTITY="<psk-identity>"
   CONFIG_PIGEON_COAP_TLS_PSK_SECRET="<psk-secret>"
 
@@ -53,8 +53,8 @@ The scheme has to be ``coaps://``. The library checks it against the transport
 this build was compiled with and refuses the endpoint rather than failing later
 in a handshake; ``coaps+tcp://`` belongs to ``coap_tcp_init``.
 
-Only production terminates CoAP; staging runs no terminator at all. To develop
-against something local instead, point the build at libcoap's ``coap-server``:
+There is one CoAP endpoint, the production one. To develop against something
+local instead, point the build at libcoap's ``coap-server``:
 ``docs/coap-conformance.md`` has the commands.
 
 The sample's own options, all in ``prj.conf`` unless noted:
@@ -122,7 +122,7 @@ A first poll against the platform, here on native_sim::
 
   *** Booting Zephyr OS build v4.4.1 ***
   <inf> pigeon: Initializing Pigeon tracking instance: pigeon-coap-dtls-sample
-  <inf> pigeon: Transport mapped to low-overhead CoAP edge pipeline: coaps://<host>:5684/device/pigeons/<pigeon-id>
+  <inf> pigeon: Transport mapped to low-overhead CoAP edge pipeline: coaps://<host>/device/pigeons/<pigeon-id>
   <inf> pigeon: Pigeon tracking instance ready: pigeon-coap-dtls-sample
   <inf> pigeon: Queued telemetry: reset_cause=8
   <inf> net_connect: Bringing network interface up
@@ -150,7 +150,7 @@ version equals its target version.
 Troubleshooting
 ---------------
 
-- ``CID status`` reported as unsupported: modem firmware older than
+- ``DTLS CID unsupported on this stack``: modem firmware older than
   mfw_nrf9160 v1.3.5 has no Connection ID, and the session runs without it.
 - A handshake that fails before any request: the PSK was refreshed after this
   build, or the endpoint names a pigeon whose connector is not CoAP.

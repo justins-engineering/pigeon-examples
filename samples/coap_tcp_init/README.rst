@@ -56,8 +56,8 @@ build log of every board that has no WiFi; ``docs/esp32c6.md`` says why.
 
 The port may be left off the endpoint, in which case 5684 is used.
 
-Only production terminates CoAP; staging runs no terminator at all. To develop
-against something local instead, point the build at libcoap's ``coap-server``:
+There is one CoAP endpoint, the production one. To develop against something
+local instead, point the build at libcoap's ``coap-server``:
 ``docs/coap-conformance.md`` has the commands.
 
 The sample's own options:
@@ -154,12 +154,12 @@ Troubleshooting
 - ``CONFIG_PIGEON_ENDPOINT scheme mismatch``: the endpoint is still in its
   ``coaps://`` form. Keep the authority and change the scheme.
 - A handshake that never completes: the terminator and the device must share
-  a ciphersuite. The two board fragments ask for AES-128-GCM and AES-128-CCM-8
-  without pinning either.
+  a ciphersuite. ``../common/boards/tls-psk.conf`` asks for AES-128-GCM and
+  AES-128-CCM-8 without pinning either.
 - A Feather build that overflows its slot: the application already fills most
-  of the non-secure partition, so another subsystem may not fit. Copy the
-  partition overlay from ``../https_init/boards`` to take back the space TF-M
-  leaves unused.
+  of the non-secure partition, so another subsystem may not fit. Copy this
+  board's ``.overlay`` from ``../https_init/boards`` to take back the space
+  TF-M leaves unused.
 - native_sim logs one ``Network disconnected`` before ``Network connected``:
   the simulated interface reports its state before it has an address.
 

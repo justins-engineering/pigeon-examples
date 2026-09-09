@@ -56,7 +56,7 @@ CMSIS-DAP probe, whose CDC-ACM port is also the console::
 What you should see
 -------------------
 
-The same five lines on every board; this is native_sim::
+The same lines on every board; this is native_sim::
 
   *** Booting Zephyr OS build v4.4.1 ***
   <inf> pigeon: Initializing Pigeon tracking instance: demo-pigeon-0003

@@ -63,7 +63,9 @@ The socket is authenticated with the same endpoint and token as the HTTPS
 connector, reaching ``<endpoint>/ws``. There are no separate WebSocket
 credentials to configure.
 
-The sample's own options, all in ``prj.conf`` unless noted:
+The sample's own options, in ``prj.conf`` unless noted. The parenthesised
+values on the ``PIGEON_WS_*`` tunables are library defaults, not settings this
+sample writes:
 
 - ``CONFIG_PIGEON_WS``: the persistent channel. Off leaves plain HTTPS
   polling, which is what ``https_init`` builds.
