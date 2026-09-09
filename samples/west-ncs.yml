@@ -37,8 +37,8 @@ manifest:
           - zcbor
           - zephyr
 
-  # The pigeon library is not a west project: ../pigeon is a symlink to a
-  # checkout that common/app.cmake adds as an extra module.
+  # The pigeon library is not a west project: ../pigeon is a checkout that
+  # common/app.cmake adds as an extra module.
 
   self:
     path: samples
