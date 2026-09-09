@@ -97,7 +97,7 @@ the CP210x port is the console::
 
   west build -p always -d build -b esp32c6_devkitc/esp32c6/hpcore samples/coap_tcp_init
   west flash -d build
-  pyserial-miniterm /dev/ttyUSB0 115200
+  pyserial-miniterm --rts 0 --dtr 0 /dev/ttyUSB0 115200
 
 nRF9160 Feather, from the ``west-ncs.yml`` topdir, over a J-Link probe::
 
