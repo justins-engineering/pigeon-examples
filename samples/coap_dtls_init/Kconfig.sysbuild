@@ -1,19 +1,11 @@
 rsource "../Kconfig.sysbuild.signing"
 
-# esp32c6_devkitc's own Kconfig.sysbuild defaults BOOTLOADER to MCUboot, but
-# this sample has no signing key or CONFIG_PIGEON_FOTA wired up for that
-# board -- there's no second slot to build against, so force it back off,
-# same as ws_init/wifi_init.
-#
-# circuitdojo_feather (nRF9160) carries no board-level default of its own
-# and would otherwise land on the global BOOTLOADER_NONE default: the app
-# image gets linked straight into the SoC's default flash partition, which
-# only boots because a real chip normally still has whatever bootloader was
-# there before. A blank/mass-erased chip has nothing at address 0 and hard-
-# faults immediately. Opt in explicitly here, matching https_init.
+# native_sim and the ESP32-C6 boot the application image directly. The
+# Feathers boot through MCUboot: without it the image links into the SoC's
+# default partition and a mass-erased chip has nothing at address 0.
 choice BOOTLOADER
-	default BOOTLOADER_NONE if BOARD_ESP32C6_DEVKITC
 	default BOOTLOADER_MCUBOOT if SOC_SERIES_NRF91
+	default BOOTLOADER_NONE
 endchoice
 
 if BOOTLOADER_MCUBOOT

@@ -9,13 +9,12 @@
 #include <zephyr/logging/log_ctrl.h>
 #include <zephyr/sys/printk.h>
 
-#include "net/connection_manager.h"
+#include "net_connect.h"
 
 LOG_MODULE_REGISTER(shadow);
 
-/* pigeon_shadow_doc's target_config is an opaque JSON string as far as the
- * pigeon library is concerned (see pigeon.h); this app decides what the
- * fields inside it mean and how to apply them. */
+/* target_config is opaque JSON to the library; this application decides what
+ * its keys mean. */
 struct app_shadow_config {
   bool log;
   int telemetry_interval;
@@ -28,19 +27,16 @@ static const struct json_obj_descr app_shadow_config_descr[] = {
     JSON_OBJ_DESCR_PRIM(struct app_shadow_config, reboot, JSON_TOK_TRUE),
 };
 
-/* Compile-time defaults applied before the first shadow sync of this boot.
- * Not persisted across reboots (no NVS/settings backing yet), so every boot
- * re-applies (and logs) the full delta from these defaults to the platform's
- * current target. */
+/* Defaults applied before the first sync of a boot. Nothing persists across
+ * reboots, so every boot re-applies the platform's target from here. */
 static struct app_shadow_config current_config = {
     .log = false,
     .telemetry_interval = 60,
     .reboot = false,
 };
 
-/* Sets every registered module's runtime filter level in one call, so the
- * shadow's "log" field can actually silence/restore logging rather than just
- * being logged and ignored. NULL backend applies to all backends+frontend. */
+/* One call covers every module, so the shadow's "log" field really silences
+ * and restores output. */
 static void set_all_log_levels(uint32_t level) {
   uint32_t module_count = log_src_cnt_get(Z_LOG_LOCAL_DOMAIN_ID);
 
@@ -49,15 +45,11 @@ static void set_all_log_levels(uint32_t level) {
   }
 }
 
-/* Reports uptime and this boot's poll count via the device telemetry path:
- * pigeon_telemetry_set() per key, then ONE pigeon_telemetry_flush() -- both
- * keys ride a single report to <endpoint>/telemetry (one CoAP POST --
- * dovecote's report_telemetry_device upserts every key in the body).
- * Unrelated to shadow config ack (see pigeon_shadow_report() below).
- * poll_count restarting from 1 doubles as a cheap reboot indicator. */
+/* Both keys ride one telemetry exchange. poll_count restarting at 1 doubles
+ * as a reboot indicator on the dashboard. */
 static void report_telemetry(void) {
   static unsigned int poll_count;
-  char buf[16];
+  char buf[21];
 
   snprintk(buf, sizeof(buf), "%lld", (long long)(k_uptime_get() / 1000));
 
@@ -99,16 +91,15 @@ int shadow_sync(void) {
     return 0;
   }
 
-  /* target_config is only valid until the next pigeon_shadow_get() call, and
-   * json_obj_parse() modifies its input in place, so work on a local copy. */
-  char config_buf[256];
+  /* json_obj_parse() edits its input, and target_config only lives until the
+   * next fetch. Sized to the library's own config limit. */
+  char config_buf[320];
 
   strncpy(config_buf, doc.target_config, sizeof(config_buf) - 1);
   config_buf[sizeof(config_buf) - 1] = '\0';
 
-  /* Seed with the current values (reboot always defaults back to false: it's
-   * a one-shot command, not a persistent field) so keys absent from
-   * target_config (a partial update) retain their current value. */
+  /* Keys absent from a partial update keep their current value. reboot is a
+   * one-shot command and always starts false. */
   struct app_shadow_config target = current_config;
   target.reboot = false;
 
@@ -145,12 +136,9 @@ int shadow_sync(void) {
       current_config.log ? "true" : "false", current_config.telemetry_interval
   );
 
-  /* Confirm what was actually applied back to the platform (see pigeon's
-   * CLAUDE.md on dovecote's report_shadow_device). current_version is the
-   * target_version we just applied, not re-derived from it server-side, so
-   * this must be sent even if the device is already catching up to a newer
-   * target by the time it lands. */
-  char report_buf[128];
+  /* current_version is whatever this device reports, so the report goes out
+   * even if a newer target is already pending by the time it lands. */
+  char report_buf[256];
   int encode_err = json_obj_encode_buf(
       app_shadow_config_descr, ARRAY_SIZE(app_shadow_config_descr), &current_config, report_buf,
       sizeof(report_buf)
@@ -168,21 +156,13 @@ int shadow_sync(void) {
     }
   }
 
-  /* Demonstrates command-via-shadow (see pigeon's CLAUDE.md: pidgeiot has no
-   * formal generation-counter/command-ack model yet, only this raw
-   * target_config JSON): "reboot" is a one-shot command rather than a
-   * persistent field, so it's deliberately excluded from current_config
-   * above -- otherwise it would never be seen as "changed" again and the
-   * device would reboot on every single poll once set true.
-   *
-   * Power the modem off gracefully first (lte_disconnect() -> CFUN=0, see
-   * net/connection_manager.c) before rebooting: an ungraceful reset trips
-   * the nRF91 modem's reset-loop protection and refuses LTE attach for 30
-   * minutes. Same pattern the https_init sample uses for its "reboot":
-   * true handling. */
+  /* "reboot" is a command, not state: kept out of current_config so it is
+   * never seen as unchanged and re-run on every poll. net_disconnect() comes
+   * first because a modem reset without a graceful power-off trips its
+   * reset-loop protection. */
   if (target.reboot) {
     LOG_WRN("Shadow v%d requested reboot; disconnecting and rebooting now", doc.target_version);
-    lte_disconnect();
+    net_disconnect();
     pigeon_reboot();
   }
 
