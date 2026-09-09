@@ -35,6 +35,11 @@ list(REMOVE_DUPLICATES board_conf_names)
 # them there; the local files below merge last and can.
 if(SAMPLE_NETWORK)
   if(board_target MATCHES "^circuitdojo_feather")
+    # A sample whose two Feather fragments would be identical writes one
+    # boards/nrf91.conf instead; Zephyr resolves board names, not families.
+    if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/boards/nrf91.conf)
+      list(APPEND EXTRA_CONF_FILE ${CMAKE_CURRENT_SOURCE_DIR}/boards/nrf91.conf)
+    endif()
     list(APPEND EXTRA_CONF_FILE ${CMAKE_CURRENT_LIST_DIR}/boards/nrf91.conf)
   endif()
   if(board_target MATCHES "^circuitdojo_feather_nrf9151")
