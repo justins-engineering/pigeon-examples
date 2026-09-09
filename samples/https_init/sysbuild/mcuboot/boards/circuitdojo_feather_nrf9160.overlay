@@ -15,8 +15,6 @@
      * default. It has to be here: a board overlay replaces app.overlay. */
     zephyr,code-partition = &boot_partition;
 
-    zephyr,console = &uart0;
-    zephyr,shell-uart = &uart0;
     zephyr,uart-mcumgr = &uart0;
   };
 };
