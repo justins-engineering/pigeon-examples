@@ -2,8 +2,8 @@
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# ../pigeon is a symlink to the library checkout rather than a west project,
-# so an edit there is picked up without a west update.
+# ../pigeon is the library checkout itself rather than a west project, so an
+# edit there is picked up without a west update.
 list(APPEND ZEPHYR_EXTRA_MODULES ${CMAKE_CURRENT_LIST_DIR}/../../pigeon)
 
 # A sample without a transport sets SAMPLE_NETWORK OFF before including this.
