@@ -25,4 +25,10 @@ if BOOTLOADER_MCUBOOT
 config BOOT_SIGNATURE_KEY_FILE
 	default "$(PIGEON_BOOT_SIGNATURE_KEY_FILE)" if "$(PIGEON_BOOT_SIGNATURE_KEY_FILE)" != ""
 
+# esp32c6_devkitc defaults this choice to BOOT_SIGNATURE_TYPE_NONE, which leaves
+# MCUboot checking an image hash and no signature at all.
+choice BOOT_SIGNATURE_TYPE
+	default BOOT_SIGNATURE_TYPE_ECDSA_P256
+endchoice
+
 endif

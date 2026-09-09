@@ -7,13 +7,4 @@ choice BOOTLOADER
 	default BOOTLOADER_MCUBOOT
 endchoice
 
-if BOOTLOADER_MCUBOOT
-
-# esp32c6_devkitc defaults this to NONE, which checks a hash and no signature.
-choice BOOT_SIGNATURE_TYPE
-	default BOOT_SIGNATURE_TYPE_ECDSA_P256
-endchoice
-
-endif
-
 source "share/sysbuild/Kconfig"

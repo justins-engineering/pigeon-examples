@@ -1,10 +1,6 @@
-# Shared by every sample that can build MCUboot. Kconfig.sysbuild.signing
-# picks the key; this only reports when that key is one anybody can sign with.
-#
-# The signature type stays in each sample's own sysbuild config, because a
-# board can default it away: esp32c6_devkitc's Kconfig.sysbuild defaults the
-# choice to BOOT_SIGNATURE_TYPE_NONE, which leaves MCUboot checking an image
-# hash and no signature at all.
+# Shared by every sample that can build MCUboot. Kconfig.sysbuild.signing picks
+# the key and the signature type; this only reports when that key is one anybody
+# can sign with.
 
 if(SB_CONFIG_BOOTLOADER_MCUBOOT AND NOT DEFINED ENV{PIGEON_BOOT_SIGNATURE_KEY_FILE})
   message(WARNING
