@@ -150,8 +150,8 @@ Troubleshooting
 
 - ``gps_sats=0`` outdoors on a Feather, forever: the GNSS low-noise amplifier
   is gated by an AT command Nordic's antenna library only issues for its own
-  boards. ``boards/circuitdojo_feather_nrf9160_ns.conf`` sets it; check it
-  survived any edit, and that the GNSS antenna is the one connected.
+  boards. ``boards/nrf91.conf`` sets it; check it survived any edit, and that
+  the GNSS antenna is the one connected.
 - ``gps_fix_quality=2``: this build reports the simulated track. Turn
   ``CONFIG_ASSET_TRACKER_SIM_GPS`` off, and note that only an nRF91 can.
 - ``Failed to queue telemetry``: the report is larger than

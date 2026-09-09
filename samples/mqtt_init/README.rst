@@ -13,7 +13,8 @@ The lesson is in ``src/shadow.c``. Board bring-up lives in ``../common/net``,
 behind ``net_connect()``, ``net_disconnect()`` and ``net_install_ca()``, so
 ``main.c`` reads the same on every board.
 
-A session authenticates one of two ways, chosen in ``boards/<board>.conf``:
+A session authenticates one of two ways, chosen in the board's own fragment
+under ``boards/``:
 
 - TLS-PSK (``CONFIG_PIGEON_MQTT_AUTH_PSK``, the default on the Feathers and
   native_sim): identity is the pigeon id, key is the short secret minted

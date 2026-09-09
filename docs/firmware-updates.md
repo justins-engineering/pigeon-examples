@@ -11,6 +11,11 @@ written by the dashboard's firmware assignment. Every poll compares that version
 `CONFIG_PIGEON_FOTA_CURRENT_VERSION`, the string this build was compiled with. The library never
 reads MCUboot's image header, so that string has to name the version the image was uploaded under.
 
+A release therefore bumps two strings, not one. `CONFIG_PIGEON_FOTA_CURRENT_VERSION` is what the
+device reports and compares; a sample's `VERSION` file, where it has one, is what `imgtool` stamps
+into the image header. Nothing checks that the two agree, so a build whose reported version is
+stale chases a target it is already running until the attempt budget stops it.
+
 On a difference the device downloads the image in `CONFIG_PIGEON_FOTA_CHUNK_SIZE` Range requests,
 verifies the sha256 of the whole image, writes it into MCUboot's second slot, schedules a one-time
 test swap and reboots.

@@ -54,9 +54,11 @@ The sample's own options, all in ``prj.conf`` unless noted:
   it to the platform, dictionary-encoded.
 - ``CONFIG_PIGEON_FOTA``: downloads a firmware image named by the shadow
   into MCUboot's second slot and reboots into it.
-- ``CONFIG_PIGEON_FOTA_CURRENT_VERSION`` (``boards/<board>.conf``): what
-  this build reports as its running version; bump it with each release so
-  it matches the version the image is uploaded under.
+- ``CONFIG_PIGEON_FOTA_CURRENT_VERSION`` (``boards/nrf91.conf`` on the
+  Feathers, ``boards/esp32c6_devkitc_hpcore.conf`` on the ESP32-C6): what
+  this build reports as its running version, and what the shadow's firmware
+  target is compared against. Bump it and this sample's ``VERSION`` file
+  together with each release; ``docs/firmware-updates.md`` says why.
 - ``CONFIG_PIGEON_HTTPS_SEC_TAG`` (42): the TLS security tag the CA
   certificate in ``../common/cert/`` is installed under. Each sample pins its own,
   because the modem's credential store outlives a reflash.
