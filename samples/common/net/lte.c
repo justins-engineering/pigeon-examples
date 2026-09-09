@@ -72,6 +72,12 @@ int net_install_ca(int sec_tag, const char* pem, size_t len) {
     return err;
   }
 
+  /* A tag holds either a certificate or a PSK; one left here by an earlier
+   * build fails every handshake as a connect error, with no credential error
+   * to point at it. */
+  (void)modem_key_mgmt_delete(sec_tag, MODEM_KEY_MGMT_CRED_TYPE_IDENTITY);
+  (void)modem_key_mgmt_delete(sec_tag, MODEM_KEY_MGMT_CRED_TYPE_PSK);
+
   bool exists;
   err = modem_key_mgmt_exists(sec_tag, MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN, &exists);
 
