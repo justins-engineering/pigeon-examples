@@ -34,6 +34,16 @@ int net_prepare(void) {
   return err;
 }
 
+/* Deleting a credential that is not there warns; the existence check is silent
+ * on a miss. */
+static void delete_if_present(int sec_tag, enum modem_key_mgmt_cred_type type) {
+  bool exists;
+
+  if (modem_key_mgmt_exists(sec_tag, type, &exists) == 0 && exists) {
+    (void)modem_key_mgmt_delete(sec_tag, type);
+  }
+}
+
 int net_install_ca(int sec_tag, const char* pem, size_t len) {
   int err = net_prepare();
 
@@ -44,8 +54,8 @@ int net_install_ca(int sec_tag, const char* pem, size_t len) {
   /* A tag holds either a certificate or a PSK; one left here by an earlier
    * build fails every handshake as a connect error, with no credential error
    * to point at it. */
-  (void)modem_key_mgmt_delete(sec_tag, MODEM_KEY_MGMT_CRED_TYPE_IDENTITY);
-  (void)modem_key_mgmt_delete(sec_tag, MODEM_KEY_MGMT_CRED_TYPE_PSK);
+  delete_if_present(sec_tag, MODEM_KEY_MGMT_CRED_TYPE_IDENTITY);
+  delete_if_present(sec_tag, MODEM_KEY_MGMT_CRED_TYPE_PSK);
 
   bool exists;
   err = modem_key_mgmt_exists(sec_tag, MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN, &exists);
