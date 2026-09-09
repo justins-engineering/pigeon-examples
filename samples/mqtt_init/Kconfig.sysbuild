@@ -1,12 +1,19 @@
 rsource "../Kconfig.sysbuild.signing"
 
-# esp32c6_devkitc's own Kconfig.sysbuild defaults BOOTLOADER to MCUboot, but
-# this sample has no signing key or CONFIG_PIGEON_FOTA wired up for that
-# board -- there's no second slot to build against, so force it back off,
-# same as ws_init/wifi_init/coap_dtls_init. native_sim stays on the global
-# BOOTLOADER_NONE default and needs no entry of its own.
+# A Feather has nothing at address 0 without MCUboot. The ESP32-C6 board
+# defaults to MCUboot, and this sample stages no firmware, so one image is
+# enough there.
 choice BOOTLOADER
 	default BOOTLOADER_NONE if BOARD_ESP32C6_DEVKITC
+	default BOOTLOADER_MCUBOOT if SOC_SERIES_NRF91
 endchoice
+
+if BOOTLOADER_MCUBOOT
+
+choice BOOT_SIGNATURE_TYPE
+	default BOOT_SIGNATURE_TYPE_ECDSA_P256
+endchoice
+
+endif
 
 source "share/sysbuild/Kconfig"

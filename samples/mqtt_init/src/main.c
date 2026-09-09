@@ -2,50 +2,53 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
-#include "net/wifi_connection_manager.h"
+#if defined(CONFIG_MODEM_KEY_MGMT)
+#include <modem/nrf_modem_lib.h>
+#include <nrf_modem.h>
+#endif
+
+#include "net_connect.h"
 #include "shadow.h"
-
-/*
- * MQTT over TLS to the pigeonhole broker -- pigeon's
- * CONFIG_PIGEON_CONNECTOR_MQTT. One persistent session carries everything:
- * telemetry, shadow reports and log chunks go out as publishes, and the
- * pigeon's target shadow arrives as a retained message rather than being
- * polled for. Two board flavors, two authentication shapes:
- *
- *   native_sim, TLS-PSK       -- the local development loop and the e2e
- *                                driver (scripts/test/native-sim-e2e.sh),
- *                                against a broker built from ~/pigeonhole.
- *   esp32c6_devkitc, cert     -- WiFi, the broker's Let's Encrypt chain
- *                                verified against ISRG Root X2, CONNECT
- *                                password = CONFIG_PIGEON_TOKEN.
- *
- * Either board can run either mode; the confs under boards/ just pick the
- * one that fits (see this repo's README).
- */
-
-/* A Kconfig string is always defined, so "" is its only way of saying "not
- * supplied" -- map that to NULL so pigeon_init() takes its documented
- * absent-PSK path (skip registration; the app owns whatever credential
- * lives under CONFIG_PIGEON_MQTT_SEC_TAG) instead of registering a
- * zero-length credential that fails every handshake. */
-#define PSK_CONF_OR_NULL(s) ((s)[0] ? (s) : NULL)
 
 LOG_MODULE_REGISTER(main);
 
+#if defined(CONFIG_PIGEON_MQTT_AUTH_CERT)
+/* The broker's trust anchor. The modem takes PEM; mbedTLS wants it terminated. */
+static const char ca_cert[] = {
+#include "broker-ca.pem.hex"
+    IF_ENABLED(CONFIG_TLS_CREDENTIALS, (0x00))
+};
+
+BUILD_ASSERT(sizeof(ca_cert) < KB(4), "the modem's credential store caps a certificate at 4 KiB");
+#endif
+
+/* A Kconfig string is always defined, so "" is its only way of saying "not
+ * supplied"; to pigeon_init() a non-NULL empty string is a zero-length
+ * credential that fails every handshake. */
+#define PSK_CONF_OR_NULL(s) ((s)[0] ? (s) : NULL)
+
+/* Whatever this board's TLS stack needs in place before the link comes up: a
+ * modem's credential store only accepts writes while it is offline. */
+static int prepare_credentials(void) {
+#if defined(CONFIG_PIGEON_MQTT_AUTH_CERT)
+  return net_install_ca(CONFIG_PIGEON_MQTT_SEC_TAG, ca_cert, sizeof(ca_cert));
+#elif defined(CONFIG_MODEM_KEY_MGMT)
+  /* The modem library has to be running before pigeon_init() writes the PSK
+   * over AT, and on this arm only the interface would otherwise start it. */
+  if (nrf_modem_is_initialized()) {
+    return 0;
+  }
+
+  return nrf_modem_lib_init();
+#else
+  return 0;
+#endif
+}
+
 int main(void) {
-  /*
-   * device_id is not decoration on this connector: it is the CONNECT client
-   * id and username, and the broker refuses a session whose id is not this
-   * pigeon's own 64-hex identifier -- or, on a PSK build, one whose id
-   * disagrees with the handshake identity. It therefore comes from
-   * CONFIG_MQTT_INIT_PIGEON_ID (prj.local.conf, git-ignored), the same
-   * convention the endpoint and the PSK secret follow, rather than being a
-   * readable placeholder as in the other samples.
-   *
-   * The PSK identity is that same string by definition, which is why
-   * pigeon's Kconfig has no separate symbol for it: a second place to write
-   * one identifier could only ever be a way to get it wrong.
-   */
+  /* device_id is the CONNECT client id and username, and on a PSK session the
+   * handshake identity too; the broker refuses a session whose three copies
+   * of it disagree, so it is a credential and lives in prj.local.conf. */
   struct pigeon_config config = {
       .device_id = CONFIG_MQTT_INIT_PIGEON_ID,
       .connector =
@@ -61,36 +64,36 @@ int main(void) {
           },
   };
 
-  /* Before the link comes up, like coap_dtls_init and for the same reason:
-   * on a modem-offloaded board pigeon_init() writes the PSK into the
-   * modem's own credential store, which only accepts writes while the modem
-   * is offline. Neither board here has a modem, but the ordering that works
-   * everywhere is the one worth keeping in a sample. */
-  int err = pigeon_init(&config);
+  int err = prepare_credentials();
 
+  if (err) {
+    LOG_ERR("Credential setup failed: %d", err);
+    return err;
+  }
+
+  err = pigeon_init(&config);
   if (err) {
     return err;
   }
 
-  err = wifi_connect();
+  err = net_connect();
   if (err) {
     return err;
   }
 
-  /* Starts the session the rest of this sample rides on. Unlike
-   * pigeon_ws_start(), there is no polling to fall back to if this fails:
-   * on this connector the session IS the transport. */
+  /* The session is the transport on this connector, so there is no polling
+   * to fall back to when it fails. */
   err = pigeon_mqtt_start(shadow_event_cb);
   if (err) {
     LOG_ERR("pigeon_mqtt_start() failed: %d", err);
-    wifi_disconnect();
+    net_disconnect();
     return err;
   }
 
-  /* shadow_loop() does not return under normal operation. */
+  /* Applies pushed and periodic shadows until told to reboot. */
   shadow_loop();
 
   pigeon_mqtt_stop();
 
-  return wifi_disconnect();
+  return net_disconnect();
 }
