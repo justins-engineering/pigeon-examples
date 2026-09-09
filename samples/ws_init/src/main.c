@@ -55,7 +55,6 @@ int main(void) {
 
   heap_monitor_start();
 
-  /* Polls the shadow and reports telemetry until told to reboot. */
   shadow_loop();
 
   return net_disconnect();

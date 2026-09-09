@@ -81,7 +81,6 @@ int main(void) {
     return err;
   }
 
-  /* Applies pushed and periodic shadows until told to reboot. */
   shadow_loop();
 
   pigeon_mqtt_stop();

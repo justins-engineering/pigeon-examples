@@ -42,7 +42,6 @@ int main(void) {
     return err;
   }
 
-  /* Polls the shadow and reports telemetry until told to reboot. */
   shadow_loop();
 
   return net_disconnect();

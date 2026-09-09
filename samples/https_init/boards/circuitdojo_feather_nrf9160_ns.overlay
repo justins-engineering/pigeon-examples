@@ -40,12 +40,15 @@
 
 &rtc0 {
   status = "okay";
+  /* 32768 Hz / (4095 + 1) = 8 Hz. */
   prescaler = <4095>;
   wakeup-source;
 };
 
 /* The modem trace buffer fits in the slack the stock partition file leaves
- * inside the modem shared-memory region, so nothing else has to move. */
+ * inside the modem shared-memory region, so nothing else has to move.
+ * Nordic's own modem-trace snippet sizes it for a different SRAM total and
+ * overflows this board. */
 &sram0_ns_modem {
   cpucell_cpuapp_ipc_shm_trace: sram0_ns_modem@4568 {
     reg = <0x4568 0x4000>;

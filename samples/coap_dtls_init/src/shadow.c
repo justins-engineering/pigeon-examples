@@ -158,8 +158,8 @@ int shadow_sync(void) {
 
   /* "reboot" is a command, not state: kept out of current_config so it is
    * never seen as unchanged and re-run on every poll. net_disconnect() comes
-   * first because a modem reset without a graceful power-off trips its
-   * reset-loop protection. */
+   * first so a link is closed rather than dropped; on a modem an ungraceful
+   * reset also trips its reset-loop protection. */
   if (target.reboot) {
     LOG_WRN("Shadow v%d requested reboot; disconnecting and rebooting now", doc.target_version);
     net_disconnect();

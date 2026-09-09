@@ -31,7 +31,8 @@ int main(void) {
     return err;
   }
 
-  /* Registers the PSK, so it runs before the link comes up. */
+  /* Registers the PSK, so it runs before the interface comes up: a modem's
+   * credential store only accepts writes while it is offline. */
   err = pigeon_init(&config);
   if (err) {
     return err;
@@ -42,7 +43,6 @@ int main(void) {
     return err;
   }
 
-  /* Polls the shadow and reports telemetry until told to reboot. */
   shadow_loop();
 
   return net_disconnect();

@@ -91,7 +91,6 @@ int main(void) {
     LOG_ERR("Position source failed to start: %d", err);
   }
 
-  /* Polls the shadow and reports position until told to reboot. */
   shadow_loop();
 
   return net_disconnect();

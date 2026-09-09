@@ -76,6 +76,7 @@ int net_connect(void) {
 }
 
 int net_disconnect(void) {
+  /* Lets an open TCP connection finish closing first. */
   k_sleep(K_SECONDS(1));
 
   int err = conn_mgr_all_if_disconnect(true);
