@@ -12,42 +12,11 @@
 
 #include "net_connect.h"
 
-LOG_MODULE_REGISTER(net_connect);
+LOG_MODULE_DECLARE(net_connect);
 
 /* Bounded so a modem that cannot attach is powered off rather than reset: the
  * modem refuses to attach for 30 minutes after repeated ungraceful resets. */
 #define CONNECT_TIMEOUT K_SECONDS(120)
-
-#define L4_EVENT_MASK (NET_EVENT_L4_CONNECTED | NET_EVENT_L4_DISCONNECTED)
-#define CONN_LAYER_EVENT_MASK (NET_EVENT_CONN_IF_FATAL_ERROR)
-
-static K_SEM_DEFINE(connected_sem, 0, 1);
-static struct net_mgmt_event_callback l4_cb;
-static struct net_mgmt_event_callback conn_cb;
-
-static void l4_event_handler(
-    struct net_mgmt_event_callback* cb, uint64_t event, struct net_if* iface
-) {
-  switch (event) {
-    case NET_EVENT_L4_CONNECTED:
-      LOG_INF("Network connected");
-      k_sem_give(&connected_sem);
-      break;
-    case NET_EVENT_L4_DISCONNECTED:
-      LOG_WRN("Network disconnected");
-      break;
-    default:
-      break;
-  }
-}
-
-static void conn_event_handler(
-    struct net_mgmt_event_callback* cb, uint64_t event, struct net_if* iface
-) {
-  if (event == NET_EVENT_CONN_IF_FATAL_ERROR) {
-    LOG_ERR("Fatal error from the connectivity layer");
-  }
-}
 
 int net_prepare(void) {
   /* The interface brings the library up later; nothing else does it earlier,
@@ -109,14 +78,7 @@ int net_install_ca(int sec_tag, const char* pem, size_t len) {
 }
 
 int net_connect(void) {
-  /* A connect that lands after the previous attempt timed out would otherwise
-   * satisfy this one against an interface that is already going down. */
-  k_sem_reset(&connected_sem);
-
-  net_mgmt_init_event_callback(&l4_cb, l4_event_handler, L4_EVENT_MASK);
-  net_mgmt_add_event_callback(&l4_cb);
-  net_mgmt_init_event_callback(&conn_cb, conn_event_handler, CONN_LAYER_EVENT_MASK);
-  net_mgmt_add_event_callback(&conn_cb);
+  net_events_arm();
 
   LOG_INF("Bringing network interface up");
 
@@ -135,7 +97,7 @@ int net_connect(void) {
     return err;
   }
 
-  err = k_sem_take(&connected_sem, CONNECT_TIMEOUT);
+  err = k_sem_take(&network_connection_sem, CONNECT_TIMEOUT);
   if (err) {
     LOG_ERR("Timed out waiting for the network: %d", err);
     net_disconnect();
