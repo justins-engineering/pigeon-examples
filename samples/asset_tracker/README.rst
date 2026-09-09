@@ -100,14 +100,14 @@ port flashes, the CP210x port is the console::
 nRF9160 Feather, from the ``west-ncs.yml`` topdir, over a J-Link probe. Real
 GNSS::
 
-  west build -p always --sysbuild -d build -b circuitdojo_feather/nrf9160/ns samples/asset_tracker
+  west build -p always -d build -b circuitdojo_feather/nrf9160/ns samples/asset_tracker
   west flash -d build -r nrfutil --erase --softreset
   pyserial-miniterm /dev/ttyUSB0 1000000
 
 nRF9151 Feather, from the ``west-ncs.yml`` topdir, over its onboard CMSIS-DAP
 probe, whose CDC-ACM port is also the console. Real GNSS::
 
-  west build -p always --sysbuild -d build -b circuitdojo_feather_nrf9151/nrf9151/ns samples/asset_tracker
+  west build -p always -d build -b circuitdojo_feather_nrf9151/nrf9151/ns samples/asset_tracker
   west flash -d build -r probe-rs
   pyserial-miniterm /dev/ttyACM0 115200
 

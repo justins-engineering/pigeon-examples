@@ -103,18 +103,17 @@ USB-JTAG port flashes, the CP210x port is the console::
   west flash -d build
   pyserial-miniterm --rts 0 --dtr 0 /dev/ttyUSB0 115200
 
-nRF9160 Feather, from the ``west-ncs.yml`` topdir, over a J-Link probe.
-``--sysbuild`` is required: it builds the MCUboot the Feathers boot through::
+nRF9160 Feather, from the ``west-ncs.yml`` topdir, over a J-Link probe. That
+topdir builds MCUboot alongside the application without a flag::
 
-  west build -p always --sysbuild -d build -b circuitdojo_feather/nrf9160/ns samples/coap_dtls_init
+  west build -p always -d build -b circuitdojo_feather/nrf9160/ns samples/coap_dtls_init
   west flash -d build -r nrfutil --erase --softreset
   pyserial-miniterm /dev/ttyUSB0 115200
 
 nRF9151 Feather, from the ``west-ncs.yml`` topdir, over its onboard CMSIS-DAP
 probe, whose CDC-ACM port is also the console::
 
-  west build -p always --sysbuild -d build \
-    -b circuitdojo_feather_nrf9151/nrf9151/ns samples/coap_dtls_init
+  west build -p always -d build -b circuitdojo_feather_nrf9151/nrf9151/ns samples/coap_dtls_init
   west flash -d build -r probe-rs
   pyserial-miniterm /dev/ttyACM0 115200
 
