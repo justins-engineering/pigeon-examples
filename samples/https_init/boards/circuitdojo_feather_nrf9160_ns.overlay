@@ -1,7 +1,9 @@
+/* i2c1 shares its peripheral instance with the trace UART below. */
 &i2c1 {
     status = "disabled";
 };
 
+/* Modem trace UART. */
 &uart1 {
     status = "okay";
     current-speed = <1000000>;
@@ -38,40 +40,21 @@
 
 &rtc0 {
   status = "okay";
-  // Set the frequency to 8Hz
   prescaler = <4095>;
   wakeup-source;
 };
 
-/* Modem trace shared-memory region, needed by CONFIG_NRF_MODEM_LIB_TRACE.
- * NOTE: this board uses zephyr/dts/vendor/nordic/nrf91xx_partition.dtsi,
- * which reserves a 40 KB (0xa000) sram0_ns_modem region but only actually
- * uses ~22.5 KB (0x4568) of it for the IPC ctrl/heap sub-nodes -- ~17.4 KB
- * of slack. The trace buffer (16 KB) fits inside that slack, so it's added
- * as a plain extra child rather than resizing sram0_ns_modem/sram0_ns_app.
- * (The nrf/snippets/nrf91-modem-trace-uart reference overlay's 0x8800/0x2f800
- * sizes are calibrated for nrf91_sram_partitions.dtsi's DIFFERENT 224 KB
- * non-secure SRAM total -- copying them verbatim here overflowed this
- * board's actual 168 KB non-secure region past the end of physical SRAM.) */
+/* The modem trace buffer fits in the slack the stock partition file leaves
+ * inside the modem shared-memory region, so nothing else has to move. */
 &sram0_ns_modem {
   cpucell_cpuapp_ipc_shm_trace: sram0_ns_modem@4568 {
     reg = <0x4568 0x4000>;
   };
 };
 
-/* No custom top-level flash partitioning: the external-flash secondary slot
- * has been dropped for now, so boot/slot0/slot1/tfm-ps/tfm-its/tfm-otp/storage
- * all use the board's stock internal-flash-only layout from
- * zephyr/dts/vendor/nordic/nrf91xx_partition.dtsi (included by
- * circuitdojo_feather_nrf9160_common.dtsi) unmodified. Must stay in sync with
- * ../sysbuild/mcuboot/boards/circuitdojo_feather_nrf9160.overlay, which
- * likewise applies no top-level partition overrides.
- *
- * The secure/nonsecure split *within* slot0/slot1 is rebalanced below: the
- * stock default (256 KB secure / 192 KB nonsecure) leaves TF-M's secure image
- * (~77 KB used) with ~180 KB of unused flash while the nonsecure app
- * (mbedTLS/TF-M PSA/modem lib/MCUmgr/etc.) doesn't fit in 192 KB. Total slot
- * size (448 KB) is unchanged, so this doesn't affect MCUboot's own overlay. */
+/* The stock 256/192 KiB secure/non-secure split leaves TF-M most of its
+ * share unused while this application overflows its own. The slot total is
+ * unchanged, so MCUboot's overlay needs nothing. */
 /delete-node/ &slot0_s_partition;
 /delete-node/ &slot0_ns_partition;
 

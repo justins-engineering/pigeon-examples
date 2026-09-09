@@ -1,29 +1,5 @@
-/* nRF9151 Feather counterpart to circuitdojo_feather_nrf9160_ns.overlay (see
- * that file's comments for the general rationale of each block). Two things
- * this board does NOT need, unlike the 9160 overlay, based on this board's
- * own out-of-tree definition (../../boards/circuitdojo/feather_nrf9151/)
- * rather than blindly copied:
- *
- * - No `&i2c1 { status = "disabled"; }`: i2c1 and uart1 share the same
- *   peripheral instance (reg 0x9000) same as on the 9160, but i2c1
- *   already defaults to "disabled" at the SoC devicetree level here and
- *   nothing in this board's common.dtsi turns it on (only i2c2 is enabled,
- *   for the onboard PMIC/accel/etc.) -- so there's no live conflict to
- *   suppress.
- * - No `&sram0_ns_modem` trace-buffer carve-out: the 9160 override exists
- *   because that board's generic upstream partition file
- *   (zephyr/dts/vendor/nordic/nrf91xx_partition.dtsi) reserves 40 KB for
- *   modem shared memory but only wires up ~22.5 KB of it, leaving the trace
- *   buffer to be hand-carved from the slack. This board's own
- *   circuitdojo_feather_nrf9151_partition_conf.dtsi (Circuit Dojo's own,
- *   not the generic upstream one) already defines
- *   cpucell_cpuapp_ipc_shm_trace at 0x4800/0x4000 inside that same 40 KB
- *   region -- nothing left to carve out.
- *
- * Must stay in sync with ../sysbuild/mcuboot/boards/circuitdojo_feather_nrf9151.overlay
- * (MCUboot's own board file) on flash layout -- see that file's comment.
- */
-
+/* Modem trace UART; this board's own partition file already carves out the
+ * trace buffer, and its i2c1 is disabled by default. */
 &uart1 {
   status = "okay";
   current-speed = <1000000>;
@@ -38,11 +14,9 @@
   pinctrl-names = "default", "sleep";
 };
 
-/* Secure/nonsecure rebalance within slot0/slot1, same motivation and same
- * split as the 9160 overlay: this board's stock default (from its own
- * circuitdojo_feather_nrf9151_common.dtsi, 256 KB secure / 192 KB nonsecure)
- * overflows the nonsecure app image by 87758 bytes at the stock split.
- * Total slot size (448 KB) is unchanged. */
+/* The stock 256/192 KiB secure/non-secure split leaves TF-M most of its
+ * share unused while this application overflows its own. The slot total is
+ * unchanged, so MCUboot's overlay needs nothing. */
 /delete-node/ &slot0_s_partition;
 /delete-node/ &slot0_ns_partition;
 

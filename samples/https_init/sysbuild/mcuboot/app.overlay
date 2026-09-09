@@ -1,0 +1,7 @@
+/* MCUboot's own overlay, repeated because this directory replaces its
+ * configuration. A board overlay under boards/ takes precedence over it. */
+/ {
+	chosen {
+		zephyr,code-partition = &boot_partition;
+	};
+};

@@ -1,3 +1,19 @@
 rsource "../Kconfig.sysbuild.signing"
 
+# native_sim has no bootloader or second slot; every other board boots through
+# MCUboot, which is where FOTA stages an image.
+choice BOOTLOADER
+	default BOOTLOADER_NONE if BOARD_NATIVE_SIM
+	default BOOTLOADER_MCUBOOT
+endchoice
+
+if BOOTLOADER_MCUBOOT
+
+# esp32c6_devkitc defaults this to NONE, which checks a hash and no signature.
+choice BOOT_SIGNATURE_TYPE
+	default BOOT_SIGNATURE_TYPE_ECDSA_P256
+endchoice
+
+endif
+
 source "share/sysbuild/Kconfig"

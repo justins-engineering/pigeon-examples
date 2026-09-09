@@ -1,24 +1,30 @@
 #include <pigeon.h>
 #include <zephyr/kernel.h>
 
-#include "net/connection_manager.h"
+#include "net_connect.h"
 #include "shadow.h"
 
+/* The platform's root CA. The modem takes PEM; mbedTLS wants it terminated. */
+static const char ca_cert[] = {
+#include "GTS_Root_R4.crt.hex"
+    IF_ENABLED(CONFIG_TLS_CREDENTIALS, (0x00))
+};
+
+BUILD_ASSERT(sizeof(ca_cert) < KB(4), "the modem's credential store caps a certificate at 4 KiB");
+
 int main(void) {
-  int err = lte_connect();
+  int err = net_install_ca(CONFIG_PIGEON_HTTPS_SEC_TAG, ca_cert, sizeof(ca_cert));
   if (err) {
     return err;
   }
 
-  /* Endpoint and token come from CONFIG_PIGEON_ENDPOINT/CONFIG_PIGEON_TOKEN
-   * (see prj.local.conf) instead of this struct. device_id is log-only --
-   * dovecote's get_shadow_device verifies the bearer token against this
-   * pigeon's own stored device_public_key, not against any claim in the
-   * token itself (there's no JWT anymore, see pigeon's CLAUDE.md), and
-   * pigeon_shadow_get() relies solely on CONFIG_PIGEON_ENDPOINT to address
-   * the request. Left as a neutral placeholder rather than a real pigeon
-   * ID: a real pigeon ID belongs only in the gitignored prj.local.conf,
-   * never in tracked source. */
+  err = net_connect();
+  if (err) {
+    return err;
+  }
+
+  /* The endpoint and token come from Kconfig. device_id only names this
+   * device in its own logs; the platform identifies it by its token. */
   struct pigeon_config config = {
       .device_id = "pigeon-sample",
       .connector = {.type = PIGEON_CONNECTOR_HTTPS},
@@ -26,17 +32,12 @@ int main(void) {
 
   err = pigeon_init(&config);
   if (err) {
-    lte_disconnect();
+    net_disconnect();
     return err;
   }
 
-  /* Both directions live in shadow.c: platform -> device (shadow fetch +
-   * apply) and device -> platform (batched telemetry via
-   * pigeon_telemetry_set()/pigeon_telemetry_flush()). shadow_loop() polls
-   * forever (interval driven by the shadow's own telemetry_interval field),
-   * matching a normally-connected device rather than this sample's original
-   * one-shot connect/disconnect; it does not return under normal operation. */
+  /* Polls the shadow and reports telemetry until told to reboot. */
   shadow_loop();
 
-  return lte_disconnect();
+  return net_disconnect();
 }

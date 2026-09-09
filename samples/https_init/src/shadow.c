@@ -9,18 +9,12 @@
 #include <zephyr/logging/log_ctrl.h>
 #include <zephyr/sys/printk.h>
 
-#include "net/connection_manager.h"
+#include "net_connect.h"
 
 LOG_MODULE_REGISTER(shadow);
 
-/* pigeon_shadow_doc's target_config is an opaque JSON string as far as the
- * pigeon library is concerned (see pigeon.h); this app decides what the
- * fields inside it mean and how to apply them -- "firmware" is no
- * exception: struct pigeon_fota_info (pigeon.h) is just this sample's JSON
- * decode target for that key, same as app_shadow_config below is for
- * log/telemetry_interval/reboot. Only the actual download/flash mechanics
- * (pigeon_fota_apply()) live in the pigeon library, since those need its
- * HTTPS transport internals. */
+/* target_config is opaque JSON to the library; this application decides what
+ * its keys mean. "firmware" decodes into the struct pigeon_fota_apply() takes. */
 struct app_shadow_config {
   bool log;
   int telemetry_interval;
@@ -47,16 +41,10 @@ static const struct json_obj_descr app_shadow_config_descr[] = {
 #endif
 };
 
-/* Compile-time defaults applied before the first shadow sync of this boot.
- * Not persisted across reboots (no NVS/settings backing yet), so every boot
- * re-applies (and logs) the full delta from these defaults to the platform's
- * current target. firmware.version defaults to CONFIG_PIGEON_FOTA_CURRENT_VERSION
- * (what this build actually is) rather than blank -- that makes every shadow
- * report accurately reflect the running image even on boots where no FOTA
- * happened, and it's also what makes convergence self-correcting: a fresh
- * boot into a newly-applied image starts right back at "target == running"
- * with zero extra bookkeeping, since the new build's own compiled-in
- * version is this same default. */
+/* Defaults applied before the first sync of a boot. Nothing persists across
+ * reboots, so every boot re-applies the platform's target from here.
+ * firmware.version starts at this build's own version, which is what lets a
+ * freshly booted image report itself as converged with no bookkeeping. */
 static struct app_shadow_config current_config = {
     .log = false,
     .telemetry_interval = 60,
@@ -66,9 +54,8 @@ static struct app_shadow_config current_config = {
 #endif
 };
 
-/* Sets every registered module's runtime filter level in one call, so the
- * shadow's "log" field can actually silence/restore logging rather than just
- * being logged and ignored. NULL backend applies to all backends+frontend. */
+/* One call covers every module, so the shadow's "log" field really silences
+ * and restores output. */
 static void set_all_log_levels(uint32_t level) {
   uint32_t module_count = log_src_cnt_get(Z_LOG_LOCAL_DOMAIN_ID);
 
@@ -77,16 +64,11 @@ static void set_all_log_levels(uint32_t level) {
   }
 }
 
-/* Reports uptime and this boot's poll count via the device telemetry path:
- * pigeon_telemetry_set() per key, then ONE pigeon_telemetry_flush() -- both
- * keys ride a single POST to <endpoint>/telemetry (dovecote's
- * report_telemetry_device upserts every key in the body) rather than one
- * POST per key. Unrelated to shadow config ack (see pigeon_shadow_report()
- * below). poll_count
- * restarting from 1 doubles as a cheap reboot indicator on the dashboard. */
+/* Both keys ride one telemetry POST. poll_count restarting at 1 doubles as a
+ * reboot indicator on the dashboard. */
 static void report_telemetry(void) {
   static unsigned int poll_count;
-  char buf[16];
+  char buf[21];
 
   snprintk(buf, sizeof(buf), "%lld", (long long)(k_uptime_get() / 1000));
 
@@ -122,13 +104,9 @@ int shadow_sync(void) {
   );
 
 #if defined(CONFIG_PIGEON_FOTA)
-  /* A successful shadow fetch (network + auth + JSON parse all worked) is
-   * this app's definition of "healthy boot" -- run this on every sync, not
-   * just the first, since boot_is_img_confirmed() makes it a no-op once
-   * already confirmed. Deliberately before the convergence early-return
-   * below, so a boot that lands with target_version == current_version
-   * (the normal case for a freshly-applied, not-yet-reverted image) still
-   * gets confirmed. */
+  /* A successful fetch is this application's definition of a healthy boot.
+   * Runs before the convergence check so a new image that lands already
+   * converged is still confirmed; a no-op once confirmed. */
   pigeon_fota_confirm_boot();
 #endif
 
@@ -139,18 +117,15 @@ int shadow_sync(void) {
     return 0;
   }
 
-  /* target_config is only valid until the next pigeon_shadow_get() call, and
-   * json_obj_parse() modifies its input in place, so work on a local copy.
-   * Sized to match pigeon_https.c's PIGEON_HTTPS_CONFIG_MAX (320, bumped
-   * alongside it for the same reason -- the "firmware" key). */
+  /* json_obj_parse() edits its input, and target_config only lives until the
+   * next fetch. Sized to the library's own config limit. */
   char config_buf[320];
 
   strncpy(config_buf, doc.target_config, sizeof(config_buf) - 1);
   config_buf[sizeof(config_buf) - 1] = '\0';
 
-  /* Seed with the current values (reboot always defaults back to false: it's
-   * a one-shot command, not a persistent field) so keys absent from
-   * target_config (a partial update) retain their current value. */
+  /* Keys absent from a partial update keep their current value. reboot is a
+   * one-shot command and always starts false. */
   struct app_shadow_config target = current_config;
   target.reboot = false;
 
@@ -188,19 +163,13 @@ int shadow_sync(void) {
   );
 
 #if defined(CONFIG_PIGEON_FOTA)
-  /* pigeon_fota_update_available() compares target.firmware.version against
-   * CONFIG_PIGEON_FOTA_CURRENT_VERSION (this build's own compiled-in
-   * version), not against current_config -- see pigeon.h. If the "firmware"
-   * key was absent from this round's target_config, target.firmware was
-   * seeded from current_config above and so already equals the running
-   * version, making this correctly a no-op. */
+  /* The library compares against this build's compiled-in version, not
+   * current_config, so a "firmware" key absent from the update is a no-op. */
   bool firmware_applied = false;
-  /* Set when the shadow named a firmware image this poll did not end up
-   * running. Convergence is the platform's signal that everything the
-   * target asked for is in place, and it is also what makes the next poll
-   * return early, so reporting it here would leave a dashboard showing a
-   * converged pigeon that is still on the old image and a device that has
-   * stopped trying to change that. */
+  /* Set when the shadow named an image this poll did not end up running.
+   * Convergence is what makes the next poll return early, so reporting it
+   * would leave the platform showing converged while the device stays on the
+   * old image and stops trying. */
   bool firmware_unconverged = false;
 
   if (pigeon_fota_update_available(&target.firmware)) {
@@ -215,44 +184,30 @@ int shadow_sync(void) {
       LOG_ERR(
           "FOTA apply failed: %d; leaving current image running, will retry next poll", fota_err
       );
-      /* Don't adopt target.firmware into current_config: the report below
-       * has to name the version this device is still actually running. */
+      /* The report below has to name the version still running. */
       target.firmware = current_config.firmware;
       firmware_unconverged = true;
     } else {
       LOG_WRN("FOTA: image staged; rebooting to let the new image report for itself");
-      /* Deliberately does not adopt target.firmware into current_config,
-       * and reports short of the target below. A staged image is not a
-       * booted one: the bootloader still gets to refuse it, and claiming
-       * convergence here would leave the platform reading converged while
-       * this device carries on running the old image and stops trying,
-       * since convergence is also what makes the next poll return early.
-       * The image that actually boots reports its own baked version on its
-       * first successful poll, which is the only place that string is
-       * worth anything. The cost is one poll cycle before the platform
-       * sees convergence, and that cycle is exactly the window in which a
-       * refusal becomes visible. */
+      /* A staged image is not a booted one: the bootloader can still refuse
+       * it, and the image that boots reports its own version on its first
+       * poll. The cost is one poll cycle before the platform sees convergence. */
       firmware_unconverged = true;
       firmware_applied = true;
     }
   }
 #endif
 
-  /* Confirm what was actually applied back to the platform (see pigeon's
-   * CLAUDE.md on dovecote's report_shadow_device). current_version is the
-   * target_version we just applied, not re-derived from it server-side, so
-   * this must be sent even if the device is already catching up to a newer
-   * target by the time it lands. */
+  /* current_version is whatever this device reports, so the report goes out
+   * even if a newer target is already pending by the time it lands. */
   char report_buf[256];
   int encode_err = json_obj_encode_buf(
       app_shadow_config_descr, ARRAY_SIZE(app_shadow_config_descr), &current_config, report_buf,
       sizeof(report_buf)
   );
-  /* The report still goes out either way: current_config is what this
-   * device is genuinely running, including whatever else in this target it
-   * did apply, and the platform only learns the firmware version actually
-   * booted from here. Only the version it is reported AT changes, which is
-   * what leaves the shadow short of its target. */
+  /* The report always carries what is running. Only the version it is
+   * reported at is held back, which is what leaves the shadow short of its
+   * target. */
   int32_t report_version = doc.target_version;
 
 #if defined(CONFIG_PIGEON_FOTA)
@@ -288,16 +243,10 @@ int shadow_sync(void) {
 
 #if defined(CONFIG_PIGEON_FOTA)
   if (target.reboot && firmware_unconverged) {
-    /* Convergence is this one-shot command's only record that it was already
-     * carried out, and the report above deliberately withheld it, so obeying
-     * the request now would reboot the device again on every poll for as
-     * long as the firmware target keeps failing.
-     *
-     * A staged image withholds convergence too, so a shadow carrying both a
-     * firmware target and this command reboots twice: once into the new
-     * image, then once more for the command, after the booted image has
-     * reported the convergence that records it. Both reboots are asked for
-     * and the sequence terminates. */
+    /* Convergence is the only record that this one-shot command ran, and the
+     * report above withheld it, so obeying now would reboot on every poll
+     * until the firmware target resolves. A shadow carrying both reboots
+     * twice: into the new image, then once more for the command. */
     LOG_WRN(
         "Shadow v%d requested reboot; deferring it until the firmware target resolves",
         doc.target_version
@@ -306,33 +255,22 @@ int shadow_sync(void) {
   }
 #endif
 
-  /* Demonstrates command-via-shadow (see pigeon's CLAUDE.md: pidgeiot has no
-   * formal generation-counter/command-ack model yet, only this raw
-   * target_config JSON): "reboot" is a one-shot command rather than a
-   * persistent field, so it's deliberately excluded from current_config
-   * above -- otherwise it would never be seen as "changed" again and the
-   * device would reboot on every single poll once set true.
-   *
-   * Both reboot triggers below -- this one and the FOTA-applied reboot
-   * further down -- power the modem off gracefully first
-   * (lte_disconnect() -> lte_lc_power_off()) before rebooting: an ungraceful
-   * reset trips the nRF91 modem's reset-loop protection and refuses LTE
-   * attach for 30 minutes (see this repo's CLAUDE.md "Modem reset safety"
-   * and connection_manager.c). Skipping the graceful power-off on either
-   * path reintroduces that reset-loop risk. */
+  /* "reboot" is a command, not state: kept out of current_config so it is
+   * never seen as unchanged and re-run on every poll. net_disconnect() comes
+   * first because a modem reset without a graceful power-off trips its
+   * reset-loop protection. */
   if (target.reboot) {
     LOG_WRN("Shadow v%d requested reboot; disconnecting and rebooting now", doc.target_version);
-    lte_disconnect();
+    net_disconnect();
     pigeon_reboot();
   }
 
 #if defined(CONFIG_PIGEON_FOTA)
   if (firmware_applied) {
     LOG_WRN(
-        "FOTA: disconnecting and rebooting into newly staged firmware %s",
-        target.firmware.version
+        "FOTA: disconnecting and rebooting into newly staged firmware %s", target.firmware.version
     );
-    lte_disconnect();
+    net_disconnect();
     pigeon_reboot();
   }
 #endif
