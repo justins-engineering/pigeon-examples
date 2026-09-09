@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.20.0)
 
+# Either authentication mode is selectable at build time.
+set(SAMPLE_TLS verify psk)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../common/app.cmake)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})

@@ -40,6 +40,15 @@ if(SAMPLE_NETWORK)
   endif()
 endif()
 
+# The mbedTLS want lists a credential shape needs. A sample names the shapes it
+# uses in SAMPLE_TLS (verify, psk) before including this. The modem boards need
+# none of it: the modem terminates TLS and holds the credentials itself.
+if(SAMPLE_NETWORK AND board_target MATCHES "^(esp32c6_devkitc|native_sim)")
+  foreach(shape IN LISTS SAMPLE_TLS)
+    list(APPEND EXTRA_CONF_FILE ${CMAKE_CURRENT_LIST_DIR}/boards/tls-${shape}.conf)
+  endforeach()
+endif()
+
 # Endpoint, token, WiFi and PSK credentials live in the git-ignored
 # prj.local.conf of each sample.
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/prj.local.conf)
