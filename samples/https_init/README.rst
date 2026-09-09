@@ -132,7 +132,9 @@ A first poll against the platform, here on native_sim::
   <inf> shadow: Next shadow poll in 60 s
 
 A Feather adds ``Provisioning CA certificate, sec_tag 42`` before the
-interface comes up, and ``Powering off modem`` before any reboot. Once the
+interface comes up, and ``Powering off modem`` before any reboot. A tag's
+first provision logs two ``modem_key_mgmt: Key not found`` warnings ahead of
+it, from the installer clearing a tag that holds nothing yet. Once the
 shadow has converged, later polls log ``Shadow already converged at version
 N; nothing to apply`` instead of applying and reporting; that is expected.
 
@@ -151,6 +153,12 @@ Troubleshooting
 - A firmware update that downloads and then reboots back into the old image:
   the image was signed with a key MCUboot does not trust; both images must be
   built with the same ``PIGEON_BOOT_SIGNATURE_KEY_FILE``.
+- ``FOTA: boot_write_img_confirmed failed: 4`` at error level once per poll:
+  a flashing artefact, not a fault in the build. The runner erases only the
+  ranges the image occupies, so a smaller image leaves its predecessor's
+  bootloader trailer live in the slot's last sector and MCUboot reads a magic
+  that is neither valid nor erased. A full chip erase clears it; another
+  rebuild and reflash does not.
 - native_sim logs one ``Network disconnected`` before ``Network connected``:
   the simulated interface reports its state before it has an address.
 

@@ -136,7 +136,9 @@ A first poll against the platform, here on native_sim::
   <inf> shadow: Next shadow poll in 60 s
 
 A Feather adds ``Provisioning CA certificate, sec_tag 44`` before the interface
-comes up, and logs ``GNSS started`` instead of the simulated track. Until it
+comes up, and logs ``GNSS started`` instead of the simulated track. A tag's
+first provision logs two ``modem_key_mgmt: Key not found`` warnings ahead of it,
+from the installer clearing a tag that holds nothing yet. Until it
 fixes, each poll reports ``gps_fix_quality=0`` with the satellites it can see
 and no position, which is what a device that has not found the sky looks like.
 

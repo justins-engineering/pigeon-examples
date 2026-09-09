@@ -176,7 +176,9 @@ constrained build offers comes from its PSA wants, and which one is used is
 the broker's choice among them; a certificate session lands on an ECDHE-ECDSA
 suite instead. A Feather adds ``Provisioning CA certificate, sec_tag 47``
 before the interface comes up on a certificate build, and ``Powering off
-modem`` before any reboot.
+modem`` before any reboot. A tag's first provision logs two
+``modem_key_mgmt: Key not found`` warnings ahead of it, from the installer
+clearing a tag that holds nothing yet.
 
 Save a change on the dashboard and the device applies it without waiting out
 its interval::

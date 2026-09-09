@@ -139,7 +139,9 @@ The console messages to look for, in the order a healthy boot produces them:
 
 - ``Bringing network interface up``, then ``Connecting to the network``, then
   ``Network connected``. A Feather provisions the CA into the modem first and
-  logs ``Provisioning CA certificate, sec_tag 43`` before any of it.
+  logs ``Provisioning CA certificate, sec_tag 43`` before any of it. A tag's
+  first provision logs two ``modem_key_mgmt: Key not found`` warnings ahead of
+  that, from the installer clearing a tag that holds nothing yet.
 - ``Pigeon tracking instance ready``, and the endpoint the transport resolved
   to. A wrong endpoint is visible here rather than three failures later.
 - ``WS: worker thread started``. The channel is opened by its own thread, so
