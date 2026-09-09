@@ -6,15 +6,15 @@
 did not negotiate a Connection ID, and can spuriously report
 `TLS_DTLS_CID_STATUS_UPLINK`/`_BIDIRECTIONAL`
 
-## Confidence note (read first)
+## Confidence
 
-Both halves of this are high confidence: the code path is short and the
+Both halves of this are high confidence. The code path is short and the
 uninitialized read is visible from the two functions' contracts alone, and
-the wrong answer was reproduced against a real DTLS server that provably
-(wire capture) never negotiated CID. What was NOT explored is how often the
-garbage happens to be zero, which is how often the bug hides. On our build
-it reproduced 100% of the time with the same wrong answer, but that's an
-artifact of whatever happened to be on that stack, not something to rely on
+the wrong answer was reproduced against a real DTLS server that a wire
+capture proves never negotiated CID. What was not explored is how often the
+stack garbage happens to be zero, which is how often the bug hides. On the
+build tested it reproduced 100% of the time with the same wrong answer, but
+that is an artifact of whatever sat on that stack, not something to rely on
 in either direction.
 
 ## Summary

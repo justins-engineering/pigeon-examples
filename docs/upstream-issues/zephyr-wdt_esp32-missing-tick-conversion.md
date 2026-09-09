@@ -5,19 +5,18 @@
 (milliseconds, per the generic WDT API) passed directly to
 `wdt_hal_config_stage()` as raw ticks, with no ms→ticks conversion
 
-## Confidence note (read first)
+## Confidence
 
-The code-level mismatch (below) is unambiguous: a documented-as-ticks
-parameter is fed a millisecond value with no conversion, and a sibling
-file in the same tree demonstrates the conversion that's missing. What's
-LOWER confidence is the real-world consequence: two hardware attempts both
-saw no hardware-reset recovery at all (up to a firm 9.2-minute lower bound,
-see "Empirical observation"), which is consistent with the hypothesis but
-doesn't pin down whether the effective deadline is merely much longer than
-intended or whether the reset action isn't firing in this configuration at
-all; we didn't have time to distinguish the two. Treat the root-cause
-diagnosis as solid and the exact real-world magnitude/whether it ever fires
-as open questions for whoever picks this up.
+The code-level mismatch below is unambiguous: a documented-as-ticks
+parameter is fed a millisecond value with no conversion, and a sibling file
+in the same tree demonstrates the conversion that is missing. The real-world
+consequence is less certain. Two hardware attempts saw no hardware-reset
+recovery at all, up to a firm 9.2-minute lower bound (see "Empirical
+observation"), which is consistent with the hypothesis but does not pin down
+whether the effective deadline is merely much longer than intended or
+whether the reset action never fires in this configuration; the two were not
+distinguished. The root-cause diagnosis is therefore solid, while the
+real-world magnitude, and whether the reset fires at all, remain open.
 
 ## Summary
 
