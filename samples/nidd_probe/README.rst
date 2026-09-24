@@ -9,11 +9,14 @@ device: ``CONFIG_PIGEON`` stays off, and the modem is driven through
 ``nrf_modem`` and ``lte_lc`` directly.
 
 Every modem notification is logged verbatim (``modem:`` lines), and the
-responses the checks need are logged after each step: the modem firmware and
-IMEI at boot, the ICCID and ``AT%XMONITOR`` once registered, then
-``AT+CGDCONT?``, ``AT+CGACT?``, ``AT+CGCONTRDP``, ``AT+CGAPNRC`` and
-``AT+CCIOTOPT?`` once the Non-IP PDN is up. The IMEI and ICCID identify the
-board and its SIM, so treat a capture accordingly.
+responses the checks need are logged after each step: the modem firmware, the
+IMEI and the stored PDP contexts at boot; the ICCID, the SIM's home network
+and ``AT%XMONITOR`` once registered; then ``AT+CGDCONT?``, ``AT+CGACT?``,
+``AT+CGCONTRDP`` (for CID 0 too when the Non-IP PDN has a context of its own),
+``AT+CGAPNRC`` and ``AT+CCIOTOPT?`` once the Non-IP PDN is up. The home network
+is the first six digits of the IMSI, its country and network codes; the rest
+of the IMSI stays off the console. The IMEI and ICCID identify the board and
+its SIM, so treat a capture accordingly.
 
 The probe gives up rather than retrying: after ten minutes without
 registration, or sixty seconds without the PDN, it logs what the modem last
@@ -46,8 +49,9 @@ The sample's own options, in ``Kconfig``:
 - ``CONFIG_NIDD_PROBE_DEDICATED_CID`` (off): off, the default context becomes
   the Non-IP PDN and the board has no IP at all, which is all a NIDD-only plan
   allows. On, the Non-IP PDN gets a context of its own, bound to the socket
-  with ``SO_BINDTOPDN``, and the default context keeps its IP PDN; that needs
-  a plan that carries IP data too.
+  with ``SO_BINDTOPDN``, and the default context is set to IP on the APN the
+  subscription names, so the attach itself is a plain IP one; that needs a
+  plan that carries IP data too.
 
 Build and flash
 ---------------
