@@ -126,6 +126,12 @@ static void lte_handler(const struct lte_lc_evt* const evt) {
                                                                   : "none"
       );
       break;
+    case LTE_LC_EVT_PSM_UPDATE:
+      LOG_INF(
+          "PSM from the network: TAU %d s, active time %d s", evt->psm_cfg.tau,
+          evt->psm_cfg.active_time
+      );
+      break;
     case LTE_LC_EVT_PDN:
       if (evt->pdn.cid != nidd_cid) {
         break;
@@ -357,11 +363,28 @@ static int cmd_report(const struct shell* sh, size_t argc, char** argv) {
   return frame_send(sh, tx_buf, 1 + len);
 }
 
+static int cmd_psm(const struct shell* sh, size_t argc, char** argv) {
+  bool enable = strcmp(argv[1], "on") == 0;
+  int err;
+
+  ARG_UNUSED(argc);
+
+  if (!enable && strcmp(argv[1], "off") != 0) {
+    shell_error(sh, "Say on or off");
+    return -EINVAL;
+  }
+  err = lte_lc_psm_req(enable);
+  LOG_INF("PSM request %s: %d", argv[1], err);
+
+  return err;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(
     nidd_cmds, SHELL_CMD_ARG(raw, NULL, "<bytes> Send that many filler bytes", cmd_raw, 2, 0),
     SHELL_CMD(hello, NULL, "Send HELLO carrying the claim key", cmd_hello),
     SHELL_CMD(telemetry, NULL, "Send TELEMETRY with a sequence number", cmd_telemetry),
     SHELL_CMD_ARG(report, NULL, "<version> Send SHADOW_REPORT for that version", cmd_report, 2, 0),
+    SHELL_CMD_ARG(psm, NULL, "<on|off> Request PSM or stop requesting it", cmd_psm, 2, 0),
     SHELL_SUBCMD_SET_END
 );
 SHELL_CMD_REGISTER(nidd, &nidd_cmds, "NIDD probe frames", NULL);

@@ -107,6 +107,12 @@ Shell commands
 - ``nidd report <version>``: sends SHADOW_REPORT, the type byte 0x02 followed
   by ``{"current_config":{},"current_version":<version>}``. The platform judges
   convergence by version alone, and a received config may not fit a frame.
+- ``nidd psm on`` or ``nidd psm off``: requests Power Saving Mode with the
+  ``lte_lc`` defaults (a 30-minute periodic TAU and 60 seconds of active time),
+  or stops requesting it. The probe boots with PSM off, so a downlink can page
+  it at any time until PSM is requested. What the network grants prints as
+  ``PSM from the network``, and each modem sleep and wake as a ``modem:
+  %XMODEMSLEEP`` line.
 - ``at <command>``: any AT command, for example ``at AT%XMONITOR``.
 
 A send succeeding means the modem accepted the bytes, not that anything
