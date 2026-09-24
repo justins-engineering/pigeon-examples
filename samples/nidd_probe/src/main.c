@@ -379,13 +379,34 @@ static int cmd_psm(const struct shell* sh, size_t argc, char** argv) {
   return err;
 }
 
+/* The modem documents RAI_NO_DATA for connected sockets; whether a raw one
+ * takes it decides how a NIDD device ends its radio time early. */
+static int cmd_rai(const struct shell* sh, size_t argc, char** argv) {
+  int value = RAI_NO_DATA;
+
+  ARG_UNUSED(argc);
+  ARG_UNUSED(argv);
+
+  if (nidd_fd < 0) {
+    shell_error(sh, "The Non-IP socket is not open");
+    return -ENOTCONN;
+  }
+  if (zsock_setsockopt(nidd_fd, ZSOCK_SOL_SOCKET, SO_RAI, &value, sizeof(value)) != 0) {
+    LOG_ERR("SO_RAI RAI_NO_DATA: errno %d", errno);
+    return -errno;
+  }
+  LOG_INF("SO_RAI RAI_NO_DATA: accepted");
+
+  return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(
     nidd_cmds, SHELL_CMD_ARG(raw, NULL, "<bytes> Send that many filler bytes", cmd_raw, 2, 0),
     SHELL_CMD(hello, NULL, "Send HELLO carrying the claim key", cmd_hello),
     SHELL_CMD(telemetry, NULL, "Send TELEMETRY with a sequence number", cmd_telemetry),
     SHELL_CMD_ARG(report, NULL, "<version> Send SHADOW_REPORT for that version", cmd_report, 2, 0),
     SHELL_CMD_ARG(psm, NULL, "<on|off> Request PSM or stop requesting it", cmd_psm, 2, 0),
-    SHELL_SUBCMD_SET_END
+    SHELL_CMD(rai, NULL, "Set RAI_NO_DATA on the Non-IP socket", cmd_rai), SHELL_SUBCMD_SET_END
 );
 SHELL_CMD_REGISTER(nidd, &nidd_cmds, "NIDD probe frames", NULL);
 

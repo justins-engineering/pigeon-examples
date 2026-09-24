@@ -113,6 +113,9 @@ Shell commands
   it at any time until PSM is requested. What the network grants prints as
   ``PSM from the network``, and each modem sleep and wake as a ``modem:
   %XMODEMSLEEP`` line.
+- ``nidd rai``: sets the release assistance indication ``RAI_NO_DATA`` on the
+  Non-IP socket and prints whether the modem accepted it. The modem honours it
+  only with RAI enabled, for example ``at AT%RAI=1``.
 - ``at <command>``: any AT command, for example ``at AT%XMONITOR``.
 
 A send succeeding means the modem accepted the bytes, not that anything
