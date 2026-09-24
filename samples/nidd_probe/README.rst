@@ -95,6 +95,12 @@ Shell commands
   errno on failure.
 - ``nidd hello``: sends HELLO, the type byte 0x04 followed by the 16 bytes of
   the claim key.
+- ``nidd telemetry``: sends TELEMETRY, the type byte 0x01 followed by a flat
+  JSON body with two keys: ``probe_seq``, which counts up from 1 at each send,
+  so a burst shows which frames were lost, and ``uptime_s``.
+- ``nidd report <version>``: sends SHADOW_REPORT, the type byte 0x02 followed
+  by ``{"current_config":{},"current_version":<version>}``. The platform judges
+  convergence by version alone, and a received config may not fit a frame.
 - ``at <command>``: any AT command, for example ``at AT%XMONITOR``.
 
 A send succeeding means the modem accepted the bytes, not that anything

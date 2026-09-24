@@ -9,6 +9,7 @@
 #include <modem/nrf_modem_lib.h>
 #include <nrf_modem_at.h>
 #include <psa/crypto.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <zephyr/kernel.h>
@@ -24,6 +25,8 @@ LOG_MODULE_REGISTER(nidd_probe, CONFIG_NIDD_PROBE_LOG_LEVEL);
 #define FRAME_MAX 2048
 #define CLAIM_KEY_LEN 16
 #define TAG_LEN 8
+#define FRAME_TELEMETRY 0x01
+#define FRAME_SHADOW_REPORT 0x02
 #define FRAME_HELLO 0x04
 /* Platform frame types have the top bit set, and each ends in a tag. */
 #define FRAME_FROM_PLATFORM 0x80
@@ -246,9 +249,54 @@ static int cmd_hello(const struct shell* sh, size_t argc, char** argv) {
   return frame_send(sh, tx_buf, 1 + CLAIM_KEY_LEN);
 }
 
+/* Each frame carries the next sequence number, so a burst shows which frames
+ * were lost on the way. */
+static int cmd_telemetry(const struct shell* sh, size_t argc, char** argv) {
+  static unsigned int seq;
+  int len;
+
+  ARG_UNUSED(argc);
+  ARG_UNUSED(argv);
+
+  seq++;
+  tx_buf[0] = FRAME_TELEMETRY;
+  len = snprintf(
+      (char*)&tx_buf[1], sizeof(tx_buf) - 1, "{\"probe_seq\":\"%u\",\"uptime_s\":\"%u\"}", seq,
+      (unsigned int)(k_uptime_get() / MSEC_PER_SEC)
+  );
+  LOG_INF("TELEMETRY probe_seq %u", seq);
+
+  return frame_send(sh, tx_buf, 1 + len);
+}
+
+/* The platform judges convergence by version alone, so the report carries an
+ * empty config rather than echo one that may not fit a frame. */
+static int cmd_report(const struct shell* sh, size_t argc, char** argv) {
+  char* end;
+  long version = strtol(argv[1], &end, 10);
+  int len;
+
+  ARG_UNUSED(argc);
+
+  if (*end != '\0' || version < 0 || version > INT32_MAX) {
+    shell_error(sh, "Version must be 0 to 2147483647");
+    return -EINVAL;
+  }
+  tx_buf[0] = FRAME_SHADOW_REPORT;
+  len = snprintf(
+      (char*)&tx_buf[1], sizeof(tx_buf) - 1, "{\"current_config\":{},\"current_version\":%ld}",
+      version
+  );
+
+  return frame_send(sh, tx_buf, 1 + len);
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(
     nidd_cmds, SHELL_CMD_ARG(raw, NULL, "<bytes> Send that many filler bytes", cmd_raw, 2, 0),
-    SHELL_CMD(hello, NULL, "Send HELLO carrying the claim key", cmd_hello), SHELL_SUBCMD_SET_END
+    SHELL_CMD(hello, NULL, "Send HELLO carrying the claim key", cmd_hello),
+    SHELL_CMD(telemetry, NULL, "Send TELEMETRY with a sequence number", cmd_telemetry),
+    SHELL_CMD_ARG(report, NULL, "<version> Send SHADOW_REPORT for that version", cmd_report, 2, 0),
+    SHELL_SUBCMD_SET_END
 );
 SHELL_CMD_REGISTER(nidd, &nidd_cmds, "NIDD probe frames", NULL);
 
