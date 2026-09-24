@@ -84,6 +84,20 @@ static void at_log_cid(const char* prefix) {
   at_log(cmd);
 }
 
+/* The SIM's home network, from the first six digits of its IMSI (MCC and a three-digit MNC in
+ * North America), tells whether the SIM is the carrier's at all. The rest of the IMSI names the
+ * subscriber and stays off the console. Needs the SIM powered, so not before the modem is on. */
+static void home_network_log(void) {
+  char imsi[20];
+  int err = nrf_modem_at_scanf("AT+CIMI", "%19s", imsi);
+
+  if (err != 1) {
+    LOG_ERR("AT+CIMI: %d", err);
+    return;
+  }
+  LOG_INF("SIM home network (IMSI prefix): %.6s", imsi);
+}
+
 static void lte_handler(const struct lte_lc_evt* const evt) {
   switch (evt->type) {
     case LTE_LC_EVT_NW_REG_STATUS:
@@ -309,13 +323,16 @@ int main(void) {
   if (k_sem_take(&registered, K_MINUTES(REGISTER_TIMEOUT_MIN)) != 0) {
     LOG_ERR("Not registered after %d minutes", REGISTER_TIMEOUT_MIN);
     at_log("AT%XICCID");
+    home_network_log();
     at_log("AT+CEREG?");
     at_log("AT%XMONITOR");
+    at_log("AT+CESQ");
     at_log("AT+CEER");
     goto stop;
   }
 
   at_log("AT%XICCID");
+  home_network_log();
   at_log("AT%XMONITOR");
 
   if (IS_ENABLED(CONFIG_NIDD_PROBE_DEDICATED_CID)) {
