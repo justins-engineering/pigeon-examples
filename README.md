@@ -33,6 +33,9 @@ The board targets behind those columns:
 Only the nRF91 modem has a GNSS receiver, so `asset_tracker` reports a fabricated track elsewhere
 and says so in every reading.
 
+One more sample is a bench tool rather than a device: [nidd_probe](samples/nidd_probe/README.rst)
+checks a carrier's Non-IP Data Delivery over NB-IoT on either Feather, with no platform involved.
+
 ## Prerequisites
 
 - The Zephyr SDK and your host's build dependencies, from Zephyr's

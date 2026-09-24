@@ -74,7 +74,7 @@ without a change here is explained.
 ## The samples
 
 Every sample builds for all four boards except `wifi_init`, which is ESP32-C6 and `native_sim`
-only.
+only, and `nidd_probe`, which is the two Feathers only.
 
 - `shadow_model`: the shadow structs with no transport. `CONFIG_PIGEON` stays off, so it is the
   smoke test that the shared data structures still compile after a `pigeon` header change.
@@ -92,6 +92,9 @@ only.
   `src/gnss_sim.c` fabricates a track everywhere else and reports `gps_fix_quality=2`, never 1.
 - `wifi_init`: WiFi bring-up with the HTTPS connector. Firmware updates are opt-in through
   `fota.conf` plus `sysbuild-mcuboot.conf`, which go together.
+- `nidd_probe`: not a pigeon device. A bench check of the carrier's Non-IP Data Delivery: NB-IoT
+  attach, a Non-IP PDN on `VZWSCEF`, every downlink printed as hex, and `nidd send` / `nidd hello`
+  shell commands. Drives `nrf_modem` and `lte_lc` itself, so `SAMPLE_NETWORK` is off.
 
 ## Credentials
 

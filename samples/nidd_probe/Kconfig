@@ -1,0 +1,32 @@
+menu "NIDD probe sample"
+
+config NIDD_PROBE_APN
+  string "APN of the carrier's Non-IP service"
+  default "VZWSCEF"
+  help
+    Verizon's SCEF APN. Frames sent on it reach the account's NiddService
+    callback, and the account's downlinks arrive on it.
+
+config NIDD_PROBE_DEDICATED_CID
+  bool "Carry the Non-IP PDN on a context of its own"
+  help
+    Off, the default context becomes the Non-IP PDN and the board has no IP
+    at all, which is all a NIDD-only plan allows. On, the default context
+    keeps its IP PDN beside it, which needs a plan that carries IP data too.
+
+config NIDD_PROBE_CLAIM_KEY
+  string "Claim key, 32 hex digits"
+  help
+    The pigeon's 16-byte claim key: the HELLO frame carries it, and every
+    platform frame's tag is keyed with it. Set it in the git-ignored
+    prj.local.conf, never here.
+
+module = NIDD_PROBE
+module-str = NIDD probe sample
+source "$(ZEPHYR_BASE)/subsys/logging/Kconfig.template.log_config"
+
+endmenu
+
+menu "Zephyr Kernel"
+source "Kconfig.zephyr"
+endmenu
