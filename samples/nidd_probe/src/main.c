@@ -275,10 +275,16 @@ int main(void) {
 
   at_log("AT+CGMR");
   at_log("AT+CGSN=1");
+  at_log("AT+CGDCONT?");
   claim_key_load();
 
   if (IS_ENABLED(CONFIG_NIDD_PROBE_DEDICATED_CID)) {
-    err = lte_lc_pdn_ctx_create(&nidd_cid);
+    /* Set rather than assumed: a run without a dedicated context may have left
+     * CID 0 Non-IP. No APN means the one the subscription names. */
+    err = lte_lc_pdn_ctx_configure(0, NULL, LTE_LC_PDN_FAM_IPV4V6, NULL);
+    if (err == 0) {
+      err = lte_lc_pdn_ctx_create(&nidd_cid);
+    }
   } else {
     err = lte_lc_pdn_default_ctx_events_enable();
   }
@@ -331,6 +337,9 @@ int main(void) {
 
   at_log("AT+CGDCONT?");
   at_log("AT+CGACT?");
+  if (nidd_cid != 0) {
+    at_log("AT+CGCONTRDP=0");
+  }
   at_log_cid("AT+CGCONTRDP=");
   at_log_cid("AT+CGAPNRC=");
   at_log("AT+CCIOTOPT?");
