@@ -8,4 +8,6 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../common/app.cmake)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nidd_probe)
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/../common/cert.cmake)
+
 target_sources(app PRIVATE src/main.c)

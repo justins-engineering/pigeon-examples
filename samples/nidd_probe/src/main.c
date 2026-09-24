@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <modem/at_monitor.h>
 #include <modem/lte_lc.h>
+#include <modem/modem_key_mgmt.h>
 #include <modem/nrf_modem_lib.h>
 #include <nrf_modem_at.h>
 #include <psa/crypto.h>
@@ -15,6 +16,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/socket.h>
+#include <zephyr/net/tls_credentials.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/util.h>
@@ -45,6 +47,18 @@ LOG_MODULE_REGISTER(nidd_probe, CONFIG_NIDD_PROBE_LOG_LEVEL);
  * off rather than reset: repeated ungraceful resets bar attach for 30 minutes. */
 #define REGISTER_TIMEOUT_MIN 10
 #define PDN_TIMEOUT_SEC 60
+
+/* A tag of the probe's own: every sample keeps its credentials apart. */
+#define HTTPS_SEC_TAG 48
+#define HTTPS_TIMEOUT_SEC 30
+
+/* The platform's root CA, terminated because the modem parses PEM as a string. */
+static const char ca_cert[] = {
+#include "GTS_Root_R4.crt.hex"
+    0x00
+};
+
+BUILD_ASSERT(sizeof(ca_cert) < KB(4), "the modem's credential store caps a certificate at 4 KiB");
 
 static K_SEM_DEFINE(registered, 0, 1);
 static K_SEM_DEFINE(pdn_up, 0, 1);
@@ -109,6 +123,29 @@ static void home_network_log(void) {
     return;
   }
   LOG_INF("SIM home network (IMSI prefix): %.6s", imsi);
+}
+
+/* The credential store takes writes only while the modem is offline, so this
+ * runs before the attach. */
+static void ca_install(void) {
+  bool exists = false;
+  int err = modem_key_mgmt_exists(HTTPS_SEC_TAG, MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN, &exists);
+
+  if (err == 0 && exists &&
+      modem_key_mgmt_cmp(
+          HTTPS_SEC_TAG, MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN, ca_cert, sizeof(ca_cert)
+      ) == 0) {
+    return;
+  }
+  if (exists) {
+    (void)modem_key_mgmt_delete(HTTPS_SEC_TAG, MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN);
+  }
+  err = modem_key_mgmt_write(
+      HTTPS_SEC_TAG, MODEM_KEY_MGMT_CRED_TYPE_CA_CHAIN, ca_cert, sizeof(ca_cert)
+  );
+  if (err) {
+    LOG_ERR("modem_key_mgmt_write: %d", err);
+  }
 }
 
 static void lte_handler(const struct lte_lc_evt* const evt) {
@@ -400,13 +437,79 @@ static int cmd_rai(const struct shell* sh, size_t argc, char** argv) {
   return 0;
 }
 
+/* One GET of / over the default context, with the Non-IP socket still open: the
+ * status line and the byte count show whether IP works beside it. */
+static int cmd_https(const struct shell* sh, size_t argc, char** argv) {
+  const char* host = argv[1];
+  struct zsock_addrinfo hints = {.ai_socktype = NET_SOCK_STREAM};
+  struct zsock_addrinfo* res;
+  sec_tag_t tags[] = {HTTPS_SEC_TAG};
+  int verify = ZSOCK_TLS_PEER_VERIFY_REQUIRED;
+  struct zsock_timeval timeout = {.tv_sec = HTTPS_TIMEOUT_SEC};
+  static char buf[512];
+  size_t total = 0;
+  ssize_t n;
+  int fd;
+  int err = zsock_getaddrinfo(host, "443", &hints, &res);
+
+  ARG_UNUSED(argc);
+
+  if (err) {
+    shell_error(sh, "Resolving %s failed: %d", host, err);
+    return -EHOSTUNREACH;
+  }
+  fd = zsock_socket(res->ai_family, NET_SOCK_STREAM, NET_IPPROTO_TLS_1_2);
+  if (fd < 0) {
+    err = -errno;
+    LOG_ERR("TLS socket: errno %d", -err);
+    zsock_freeaddrinfo(res);
+    return err;
+  }
+  if (zsock_setsockopt(fd, ZSOCK_SOL_TLS, ZSOCK_TLS_SEC_TAG_LIST, tags, sizeof(tags)) != 0 ||
+      zsock_setsockopt(fd, ZSOCK_SOL_TLS, ZSOCK_TLS_HOSTNAME, host, strlen(host)) != 0 ||
+      zsock_setsockopt(fd, ZSOCK_SOL_TLS, ZSOCK_TLS_PEER_VERIFY, &verify, sizeof(verify)) != 0 ||
+      zsock_setsockopt(fd, ZSOCK_SOL_SOCKET, ZSOCK_SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0 ||
+      zsock_connect(fd, res->ai_addr, res->ai_addrlen) != 0) {
+    err = -errno;
+    LOG_ERR("TLS connect to %s: errno %d", host, -err);
+    goto out;
+  }
+
+  n = snprintf(
+      buf, sizeof(buf),
+      "GET / HTTP/1.1\r\nHost: %s\r\nUser-Agent: nidd-probe\r\nConnection: close\r\n\r\n", host
+  );
+  if (zsock_send(fd, buf, n, 0) != n) {
+    err = -errno;
+    LOG_ERR("HTTPS send: errno %d", -err);
+    goto out;
+  }
+  while ((n = zsock_recv(fd, buf, sizeof(buf) - 1, 0)) > 0) {
+    if (total == 0) {
+      buf[n] = '\0';
+      LOG_INF("HTTPS %s: %.*s", host, (int)strcspn(buf, "\r\n"), buf);
+    }
+    total += n;
+  }
+  err = n < 0 ? -errno : 0;
+  LOG_INF("HTTPS %s: %zu bytes, then %s %d", host, total, n < 0 ? "errno" : "close", -err);
+
+out:
+  (void)zsock_close(fd);
+  zsock_freeaddrinfo(res);
+
+  return err;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(
     nidd_cmds, SHELL_CMD_ARG(raw, NULL, "<bytes> Send that many filler bytes", cmd_raw, 2, 0),
     SHELL_CMD(hello, NULL, "Send HELLO carrying the claim key", cmd_hello),
     SHELL_CMD(telemetry, NULL, "Send TELEMETRY with a sequence number", cmd_telemetry),
     SHELL_CMD_ARG(report, NULL, "<version> Send SHADOW_REPORT for that version", cmd_report, 2, 0),
     SHELL_CMD_ARG(psm, NULL, "<on|off> Request PSM or stop requesting it", cmd_psm, 2, 0),
-    SHELL_CMD(rai, NULL, "Set RAI_NO_DATA on the Non-IP socket", cmd_rai), SHELL_SUBCMD_SET_END
+    SHELL_CMD(rai, NULL, "Set RAI_NO_DATA on the Non-IP socket", cmd_rai),
+    SHELL_CMD_ARG(https, NULL, "<host> GET / over the IP context", cmd_https, 2, 0),
+    SHELL_SUBCMD_SET_END
 );
 SHELL_CMD_REGISTER(nidd, &nidd_cmds, "NIDD probe frames", NULL);
 
@@ -449,6 +552,7 @@ int main(void) {
   at_log("AT+CGSN=1");
   at_log("AT+CGDCONT?");
   claim_key_load();
+  ca_install();
 
   if (IS_ENABLED(CONFIG_NIDD_PROBE_DEDICATED_CID)) {
     /* Set rather than assumed: a run without a dedicated context may have left

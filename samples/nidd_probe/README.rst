@@ -116,6 +116,11 @@ Shell commands
 - ``nidd rai``: sets the release assistance indication ``RAI_NO_DATA`` on the
   Non-IP socket and prints whether the modem accepted it. The modem honours it
   only with RAI enabled, for example ``at AT%RAI=1``.
+- ``nidd https <host>``: fetches ``/`` from that host over HTTPS on the default
+  context, with the Non-IP socket still open, and prints the status line and
+  the number of bytes received. The server is verified against the platform's
+  root CA, which the probe writes to the modem's security tag 48 at boot. It
+  needs ``CONFIG_NIDD_PROBE_DEDICATED_CID``: without it the board has no IP.
 - ``at <command>``: any AT command, for example ``at AT%XMONITOR``.
 
 A send succeeding means the modem accepted the bytes, not that anything
