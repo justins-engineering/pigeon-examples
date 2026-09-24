@@ -16,6 +16,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/shell/shell.h>
+#include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/util.h>
 
 LOG_MODULE_REGISTER(nidd_probe, CONFIG_NIDD_PROBE_LOG_LEVEL);
@@ -30,6 +31,15 @@ LOG_MODULE_REGISTER(nidd_probe, CONFIG_NIDD_PROBE_LOG_LEVEL);
 #define FRAME_HELLO 0x04
 /* Platform frame types have the top bit set, and each ends in a tag. */
 #define FRAME_FROM_PLATFORM 0x80
+#define FRAME_SHADOW 0x81
+#define FRAME_STATUS 0x82
+/* Type, then target_version and current_version as little-endian i32. */
+#define SHADOW_HEADER_LEN 9
+/* Type, code, then arg as a little-endian u32, then the tag. */
+#define STATUS_LEN 14
+#define STATUS_STORED 0x00
+#define STATUS_PAUSED 0x01
+#define STATUS_UNCLAIMED 0x02
 
 /* Past this, waiting will not produce an NB-IoT attach. The modem is powered
  * off rather than reset: repeated ungraceful resets bar attach for 30 minutes. */
@@ -134,44 +144,32 @@ static void lte_handler(const struct lte_lc_evt* const evt) {
   }
 }
 
-/* Without a key the probe still runs; only HELLO and the tag check need it. */
-static void claim_key_load(void) {
-  const char* hex = CONFIG_NIDD_PROBE_CLAIM_KEY;
+static psa_key_id_t hmac_key_import(const uint8_t* key) {
   psa_key_attributes_t attr = PSA_KEY_ATTRIBUTES_INIT;
+  psa_key_id_t id = PSA_KEY_ID_NULL;
   psa_status_t status;
-
-  if (strlen(hex) != 2 * CLAIM_KEY_LEN ||
-      hex2bin(hex, 2 * CLAIM_KEY_LEN, claim_key, sizeof(claim_key)) != CLAIM_KEY_LEN) {
-    LOG_WRN("CONFIG_NIDD_PROBE_CLAIM_KEY is not 32 hex digits: no HELLO, no tag checks");
-    return;
-  }
-  claim_key_loaded = true;
-
-  status = psa_crypto_init();
-  if (status != PSA_SUCCESS) {
-    LOG_ERR("psa_crypto_init: %d", status);
-    return;
-  }
 
   psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_SIGN_MESSAGE);
   psa_set_key_algorithm(&attr, PSA_ALG_HMAC(PSA_ALG_SHA_256));
   psa_set_key_type(&attr, PSA_KEY_TYPE_HMAC);
   psa_set_key_bits(&attr, 8 * CLAIM_KEY_LEN);
 
-  status = psa_import_key(&attr, claim_key, sizeof(claim_key), &tag_key);
+  status = psa_import_key(&attr, key, CLAIM_KEY_LEN, &id);
   if (status != PSA_SUCCESS) {
     LOG_ERR("psa_import_key: %d", status);
   }
+
+  return id;
 }
 
 /* The tag is the first TAG_LEN bytes of HMAC-SHA256 over everything before it,
  * compared without an early exit. */
-static bool tag_verifies(const uint8_t* frame, size_t len) {
+static bool tag_verifies(psa_key_id_t key, const uint8_t* frame, size_t len) {
   uint8_t mac[PSA_HASH_LENGTH(PSA_ALG_SHA_256)];
   size_t mac_len;
   uint8_t diff = 0;
   psa_status_t status = psa_mac_compute(
-      tag_key, PSA_ALG_HMAC(PSA_ALG_SHA_256), frame, len - TAG_LEN, mac, sizeof(mac), &mac_len
+      key, PSA_ALG_HMAC(PSA_ALG_SHA_256), frame, len - TAG_LEN, mac, sizeof(mac), &mac_len
   );
 
   if (status != PSA_SUCCESS) {
@@ -185,16 +183,84 @@ static bool tag_verifies(const uint8_t* frame, size_t len) {
   return diff == 0;
 }
 
+/* The API reference's STATUS STORED 7 example, tagged with a key of 16 zero
+ * bytes: checking it first shows that a "tag bad" later is the frame's fault. */
+static void tag_self_test(void) {
+  static const uint8_t zero_key[CLAIM_KEY_LEN];
+  static const uint8_t example[STATUS_LEN] = {0x82, 0x00, 0x07, 0x00, 0x00, 0x00, 0xca,
+                                              0x2f, 0xa8, 0x6d, 0x9c, 0xdc, 0xf1, 0x9b};
+  psa_key_id_t id = hmac_key_import(zero_key);
+
+  if (id == PSA_KEY_ID_NULL) {
+    return;
+  }
+  LOG_INF(
+      "Tag check on the API reference example: %s",
+      tag_verifies(id, example, sizeof(example)) ? "ok" : "bad"
+  );
+  (void)psa_destroy_key(id);
+}
+
+/* Without a key the probe still runs; only HELLO and the tag check need it. */
+static void claim_key_load(void) {
+  const char* hex = CONFIG_NIDD_PROBE_CLAIM_KEY;
+  psa_status_t status;
+
+  if (strlen(hex) == 2 * CLAIM_KEY_LEN &&
+      hex2bin(hex, 2 * CLAIM_KEY_LEN, claim_key, sizeof(claim_key)) == CLAIM_KEY_LEN) {
+    claim_key_loaded = true;
+  } else {
+    LOG_WRN("CONFIG_NIDD_PROBE_CLAIM_KEY is not 32 hex digits: no HELLO, no tag checks");
+  }
+
+  status = psa_crypto_init();
+  if (status != PSA_SUCCESS) {
+    LOG_ERR("psa_crypto_init: %d", status);
+    return;
+  }
+  tag_self_test();
+  if (claim_key_loaded) {
+    tag_key = hmac_key_import(claim_key);
+  }
+}
+
+static const char* status_name(uint8_t code) {
+  switch (code) {
+    case STATUS_STORED:
+      return "STORED";
+    case STATUS_PAUSED:
+      return "PAUSED";
+    case STATUS_UNCLAIMED:
+      return "UNCLAIMED";
+    default:
+      return "unknown";
+  }
+}
+
 static void downlink_log(const uint8_t* frame, size_t len) {
   LOG_INF("Downlink, %zu bytes", len);
   LOG_HEXDUMP_INF(frame, len, "downlink");
 
   if (len <= TAG_LEN || (frame[0] & FRAME_FROM_PLATFORM) == 0) {
-    LOG_INF("Downlink tag: none, not a platform frame");
-  } else if (tag_key == PSA_KEY_ID_NULL) {
-    LOG_WRN("Downlink tag: unchecked, no claim key");
+    LOG_INF("Downlink tag none: not a platform frame");
+    return;
+  }
+  if (frame[0] == FRAME_SHADOW && len >= SHADOW_HEADER_LEN + TAG_LEN) {
+    LOG_INF(
+        "SHADOW target_version %d, current_version %d, target_config %zu bytes",
+        (int)(int32_t)sys_get_le32(&frame[1]), (int)(int32_t)sys_get_le32(&frame[5]),
+        len - SHADOW_HEADER_LEN - TAG_LEN
+    );
+  } else if (frame[0] == FRAME_STATUS && len == STATUS_LEN) {
+    LOG_INF("STATUS %s, arg %u", status_name(frame[1]), (unsigned int)sys_get_le32(&frame[2]));
   } else {
-    LOG_INF("Downlink tag: %s", tag_verifies(frame, len) ? "ok" : "bad");
+    LOG_INF("Platform frame of unknown type 0x%02x or length", frame[0]);
+  }
+
+  if (tag_key == PSA_KEY_ID_NULL) {
+    LOG_WRN("Downlink tag unchecked: no claim key");
+  } else {
+    LOG_INF("Downlink tag %s", tag_verifies(tag_key, frame, len) ? "ok" : "bad");
   }
 }
 

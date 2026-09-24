@@ -82,9 +82,15 @@ finally::
 
   <inf> nidd_probe: Ready: 'nidd raw <bytes>' sends filler, 'nidd hello' sends HELLO
 
-Each downlink then prints as ``Downlink, <n> bytes``, a hex dump, and a
-``Downlink tag:`` line: ``ok`` or ``bad`` for a platform frame checked against
-the claim key, ``none`` for anything else.
+Before the attach, ``Tag check on the API reference example: ok`` shows that
+the tag check itself works: it checks the API reference's tagged ``STATUS
+STORED 7`` example against its all-zero key.
+
+Each downlink then prints as ``Downlink, <n> bytes`` and a hex dump. A platform
+frame, type 0x81 or 0x82, is decoded (``SHADOW`` with its two versions and the
+size of its ``target_config``, ``STATUS`` with its code and argument) and its
+tag checked against the claim key: ``Downlink tag ok`` or ``Downlink tag bad``.
+Anything else prints ``Downlink tag none``.
 
 Shell commands
 --------------
