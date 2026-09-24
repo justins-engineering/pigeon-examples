@@ -215,7 +215,7 @@ static int frame_send(const struct shell* sh, const uint8_t* frame, size_t len) 
 
 /* Byte 0 is 0x00, a type reserved in both directions, so filler is never read
  * as a frame; the counting pattern shows truncation in what arrives. */
-static int cmd_send(const struct shell* sh, size_t argc, char** argv) {
+static int cmd_raw(const struct shell* sh, size_t argc, char** argv) {
   char* end;
   unsigned long len = strtoul(argv[1], &end, 10);
 
@@ -247,7 +247,7 @@ static int cmd_hello(const struct shell* sh, size_t argc, char** argv) {
 }
 
 SHELL_STATIC_SUBCMD_SET_CREATE(
-    nidd_cmds, SHELL_CMD_ARG(send, NULL, "<bytes> Send that many filler bytes", cmd_send, 2, 0),
+    nidd_cmds, SHELL_CMD_ARG(raw, NULL, "<bytes> Send that many filler bytes", cmd_raw, 2, 0),
     SHELL_CMD(hello, NULL, "Send HELLO carrying the claim key", cmd_hello), SHELL_SUBCMD_SET_END
 );
 SHELL_CMD_REGISTER(nidd, &nidd_cmds, "NIDD probe frames", NULL);
@@ -365,7 +365,7 @@ int main(void) {
   if (nidd_fd < 0) {
     goto stop;
   }
-  LOG_INF("Ready: 'nidd send <bytes>' sends filler, 'nidd hello' sends HELLO");
+  LOG_INF("Ready: 'nidd raw <bytes>' sends filler, 'nidd hello' sends HELLO");
 
   for (;;) {
     ssize_t len = zsock_recv(nidd_fd, rx_buf, sizeof(rx_buf), 0);

@@ -93,7 +93,7 @@ only, and `nidd_probe`, which is the two Feathers only.
 - `wifi_init`: WiFi bring-up with the HTTPS connector. Firmware updates are opt-in through
   `fota.conf` plus `sysbuild-mcuboot.conf`, which go together.
 - `nidd_probe`: not a pigeon device. A bench check of the carrier's Non-IP Data Delivery: NB-IoT
-  attach, a Non-IP PDN on `VZWSCEF`, every downlink printed as hex, and `nidd send` / `nidd hello`
+  attach, a Non-IP PDN on `VZWSCEF`, every downlink printed as hex, and `nidd raw` / `nidd hello`
   shell commands. Drives `nrf_modem` and `lte_lc` itself, so `SAMPLE_NETWORK` is off.
 
 ## Credentials

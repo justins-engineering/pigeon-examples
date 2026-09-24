@@ -80,7 +80,7 @@ access technology 9 (NB-IoT), ``LTE mode: NB-IoT``, a ``modem: +CGEV: ME PDN
 ACT`` line for the Non-IP context, the PDN lines listed above, ``PDN ID``, and
 finally::
 
-  <inf> nidd_probe: Ready: 'nidd send <bytes>' sends filler, 'nidd hello' sends HELLO
+  <inf> nidd_probe: Ready: 'nidd raw <bytes>' sends filler, 'nidd hello' sends HELLO
 
 Each downlink then prints as ``Downlink, <n> bytes``, a hex dump, and a
 ``Downlink tag:`` line: ``ok`` or ``bad`` for a platform frame checked against
@@ -89,7 +89,7 @@ the claim key, ``none`` for anything else.
 Shell commands
 --------------
 
-- ``nidd send <bytes>``: sends that many filler bytes, 1 to 2048. Byte 0 is
+- ``nidd raw <bytes>``: sends that many filler bytes, 1 to 2048. Byte 0 is
   0x00, a type no frame uses, and the rest count upward, so truncation shows in
   what arrives. The result prints as ``send(<n> bytes) returned <r>``, with the
   errno on failure.
