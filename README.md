@@ -20,12 +20,14 @@ that are yours. Each has its own README with the exact commands for every board 
 | [mqtt_init](samples/mqtt_init/README.rst) | One persistent MQTT session, shadow pushed rather than polled | yes | yes | yes | yes |
 | [asset_tracker](samples/asset_tracker/README.rst) | GNSS position as telemetry | yes | yes | simulated | simulated |
 | [wifi_init](samples/wifi_init/README.rst) | WiFi bring-up with the HTTPS connector, firmware updates opt-in | no | no | yes | yes |
+| [nidd_init](samples/nidd_init/README.rst) | Reports over the carrier's Non-IP Data Delivery, inside four radio accesses an hour | yes | no | no | no |
 
 The board targets behind those columns:
 
 - `circuitdojo_feather/nrf9160/ns` and `circuitdojo_feather_nrf9151/nrf9151/ns`, the Circuit Dojo
   cellular Feathers. Both need a SIM with LTE-M data. The nRF9151 board definition is out of tree,
-  under `samples/boards`, and needs no flag on the command line.
+  under `samples/boards`, and needs no flag on the command line. `nidd_init` needs a Verizon NB-IoT
+  SIM on the NIDD plan instead of LTE-M data.
 - `esp32c6_devkitc/esp32c6/hpcore`, on a 2.4 GHz WiFi network. See [docs/esp32c6.md](docs/esp32c6.md).
 - `native_sim/native/64`, on the build host, using its own sockets. Nothing to flash and no
   hardware to own, which makes it the fastest way to watch a sample talk to the platform.

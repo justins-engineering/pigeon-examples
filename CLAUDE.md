@@ -74,7 +74,8 @@ without a change here is explained.
 ## The samples
 
 Every sample builds for all four boards except `wifi_init`, which is ESP32-C6 and `native_sim`
-only, and `nidd_probe`, which is the two Feathers only.
+only, `nidd_probe`, which is the two Feathers only, and `nidd_init`, which is the nRF9160 Feather
+only.
 
 - `shadow_model`: the shadow structs with no transport. `CONFIG_PIGEON` stays off, so it is the
   smoke test that the shared data structures still compile after a `pigeon` header change.
@@ -95,6 +96,12 @@ only, and `nidd_probe`, which is the two Feathers only.
 - `nidd_probe`: not a pigeon device. A bench check of the carrier's Non-IP Data Delivery: NB-IoT
   attach, a Non-IP PDN on `VZWSCEF`, every downlink printed as hex, and `nidd raw` / `nidd hello`
   shell commands. Drives `nrf_modem` and `lte_lc` itself, so `SAMPLE_NETWORK` is off.
+- `nidd_init`: a pigeon over `CONFIG_PIGEON_CONNECTOR_NIDD`. `HELLO` at boot claims the pigeon,
+  the reply's shadow is applied and reported, and four readings leave as one batch per wake of at
+  least 15 minutes, which keeps it inside the carrier's four radio accesses an hour. nRF9160
+  Feather only (Verizon does not serve NIDD to the nRF9151), which its `CMakeLists.txt` enforces.
+  Drives `lte_lc` itself, so `SAMPLE_NETWORK` is off; the claim key is
+  `CONFIG_PIGEON_NIDD_CLAIM_KEY` in `prj.local.conf`.
 
 ## Credentials
 
