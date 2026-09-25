@@ -1,0 +1,8 @@
+rsource "../Kconfig.sysbuild.signing"
+
+# A Feather has nothing at address 0 without MCUboot.
+choice BOOTLOADER
+	default BOOTLOADER_MCUBOOT
+endchoice
+
+source "share/sysbuild/Kconfig"
