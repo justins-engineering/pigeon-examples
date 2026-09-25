@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.20.0)
 set(SAMPLE_NETWORK OFF)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../common/app.cmake)
 
-if(NOT board_target MATCHES "^circuitdojo_feather/nrf9160")
+if(NOT board_target MATCHES "^circuitdojo_feather/nrf9160/ns$")
   message(FATAL_ERROR
     "nidd_init builds for circuitdojo_feather/nrf9160/ns only: Verizon serves NIDD to modules "
     "it supports, and the nRF9151 is not one")
