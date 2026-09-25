@@ -87,10 +87,12 @@ the tag check itself works: it checks the API reference's tagged ``STATUS
 STORED 7`` example against its all-zero key.
 
 Each downlink then prints as ``Downlink, <n> bytes`` and a hex dump. A platform
-frame, type 0x81 or 0x82, is decoded (``SHADOW`` with its two versions and the
-size of its ``target_config``, ``STATUS`` with its code and argument) and its
-tag checked against the claim key: ``Downlink tag ok`` or ``Downlink tag bad``.
-Anything else prints ``Downlink tag none``.
+frame, type 0x81 or 0x82, is decoded from its text header (``SHADOW`` with its
+two versions and the size of its ``target_config``, ``STATUS`` with its code
+and argument) and its tag, 16 hex characters, checked against the claim key:
+``Downlink tag ok`` or ``Downlink tag bad``. Anything else prints ``Downlink
+tag none``. Every frame the probe sends prints as a hex dump too, except
+``HELLO``, whose body is the claim key.
 
 Shell commands
 --------------
@@ -99,8 +101,8 @@ Shell commands
   0x00, a type no frame uses, and the rest count upward, so truncation shows in
   what arrives. The result prints as ``send(<n> bytes) returned <r>``, with the
   errno on failure.
-- ``nidd hello``: sends HELLO, the type byte 0x04 followed by the 16 bytes of
-  the claim key.
+- ``nidd hello``: sends HELLO, the type byte 0x04 followed by the claim key as
+  32 lowercase hex characters.
 - ``nidd telemetry``: sends TELEMETRY, the type byte 0x01 followed by a flat
   JSON body with two keys: ``probe_seq``, which counts up from 1 at each send,
   so a burst shows which frames were lost, and ``uptime_s``.

@@ -18,7 +18,6 @@
 #include <zephyr/net/socket.h>
 #include <zephyr/net/tls_credentials.h>
 #include <zephyr/shell/shell.h>
-#include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/util.h>
 
 LOG_MODULE_REGISTER(nidd_probe, CONFIG_NIDD_PROBE_LOG_LEVEL);
@@ -27,21 +26,23 @@ LOG_MODULE_REGISTER(nidd_probe, CONFIG_NIDD_PROBE_LOG_LEVEL);
  * network draws its own line. */
 #define FRAME_MAX 2048
 #define CLAIM_KEY_LEN 16
+/* The tag is the first TAG_LEN bytes of HMAC-SHA256, written as lowercase hex. */
 #define TAG_LEN 8
+#define TAG_CHARS (2 * TAG_LEN)
 #define FRAME_TELEMETRY 0x01
 #define FRAME_SHADOW_REPORT 0x02
 #define FRAME_HELLO 0x04
-/* Platform frame types have the top bit set, and each ends in a tag. */
+/* Platform frame types have the top bit set. The carrier refuses a frame holding two adjacent
+ * NUL bytes, so after the type byte each carries its numbers as text, two decimal integers with
+ * a space between them and a newline after, and it ends in the tag. */
 #define FRAME_FROM_PLATFORM 0x80
 #define FRAME_SHADOW 0x81
 #define FRAME_STATUS 0x82
-/* Type, then target_version and current_version as little-endian i32. */
-#define SHADOW_HEADER_LEN 9
-/* Type, code, then arg as a little-endian u32, then the tag. */
-#define STATUS_LEN 14
-#define STATUS_STORED 0x00
-#define STATUS_PAUSED 0x01
-#define STATUS_UNCLAIMED 0x02
+/* A header number fits a u32. */
+#define HEADER_DIGITS_MAX 10
+#define STATUS_STORED 0
+#define STATUS_PAUSED 1
+#define STATUS_UNCLAIMED 2
 
 /* Past this, waiting will not produce an NB-IoT attach. The modem is powered
  * off rather than reset: repeated ungraceful resets bar attach for 30 minutes. */
@@ -205,22 +206,28 @@ static psa_key_id_t hmac_key_import(const uint8_t* key) {
   return id;
 }
 
-/* The tag is the first TAG_LEN bytes of HMAC-SHA256 over everything before it,
- * compared without an early exit. */
+/* The tag is the hex of the first TAG_LEN bytes of HMAC-SHA256 over everything
+ * before it, compared without an early exit. */
 static bool tag_verifies(psa_key_id_t key, const uint8_t* frame, size_t len) {
   uint8_t mac[PSA_HASH_LENGTH(PSA_ALG_SHA_256)];
+  char hex[TAG_CHARS + 1];
   size_t mac_len;
   uint8_t diff = 0;
-  psa_status_t status = psa_mac_compute(
-      key, PSA_ALG_HMAC(PSA_ALG_SHA_256), frame, len - TAG_LEN, mac, sizeof(mac), &mac_len
-  );
+  psa_status_t status;
 
+  if (len < TAG_CHARS) {
+    return false;
+  }
+  status = psa_mac_compute(
+      key, PSA_ALG_HMAC(PSA_ALG_SHA_256), frame, len - TAG_CHARS, mac, sizeof(mac), &mac_len
+  );
   if (status != PSA_SUCCESS) {
     LOG_ERR("psa_mac_compute: %d", status);
     return false;
   }
-  for (size_t i = 0; i < TAG_LEN; i++) {
-    diff |= mac[i] ^ frame[len - TAG_LEN + i];
+  (void)bin2hex(mac, TAG_LEN, hex, sizeof(hex));
+  for (size_t i = 0; i < TAG_CHARS; i++) {
+    diff |= (uint8_t)hex[i] ^ frame[len - TAG_CHARS + i];
   }
 
   return diff == 0;
@@ -230,8 +237,10 @@ static bool tag_verifies(psa_key_id_t key, const uint8_t* frame, size_t len) {
  * bytes: checking it first shows that a "tag bad" later is the frame's fault. */
 static void tag_self_test(void) {
   static const uint8_t zero_key[CLAIM_KEY_LEN];
-  static const uint8_t example[STATUS_LEN] = {0x82, 0x00, 0x07, 0x00, 0x00, 0x00, 0xca,
-                                              0x2f, 0xa8, 0x6d, 0x9c, 0xdc, 0xf1, 0x9b};
+  static const char example[] =
+      "\x82"
+      "0 7\n"
+      "db37ac5430ae1394";
   psa_key_id_t id = hmac_key_import(zero_key);
 
   if (id == PSA_KEY_ID_NULL) {
@@ -239,7 +248,7 @@ static void tag_self_test(void) {
   }
   LOG_INF(
       "Tag check on the API reference example: %s",
-      tag_verifies(id, example, sizeof(example)) ? "ok" : "bad"
+      tag_verifies(id, (const uint8_t*)example, sizeof(example) - 1) ? "ok" : "bad"
   );
   (void)psa_destroy_key(id);
 }
@@ -267,7 +276,7 @@ static void claim_key_load(void) {
   }
 }
 
-static const char* status_name(uint8_t code) {
+static const char* status_name(uint32_t code) {
   switch (code) {
     case STATUS_STORED:
       return "STORED";
@@ -280,22 +289,56 @@ static const char* status_name(uint8_t code) {
   }
 }
 
+/* Reads one header number, up to HEADER_DIGITS_MAX digits followed by `end`. Returns the
+ * bytes read, `end` included, or 0 when the text is not that. */
+static size_t header_number(const uint8_t* text, size_t len, uint8_t end, uint32_t* value) {
+  uint64_t number = 0;
+  size_t i = 0;
+
+  while (i < len && i < HEADER_DIGITS_MAX && text[i] >= '0' && text[i] <= '9') {
+    number = number * 10 + (text[i] - '0');
+    i++;
+  }
+  if (i == 0 || i == len || text[i] != end || number > UINT32_MAX) {
+    return 0;
+  }
+  *value = (uint32_t)number;
+
+  return i + 1;
+}
+
 static void downlink_log(const uint8_t* frame, size_t len) {
+  uint32_t first;
+  uint32_t second;
+  size_t body;
+  size_t used;
+  size_t header = 0;
+
   LOG_INF("Downlink, %zu bytes", len);
   LOG_HEXDUMP_INF(frame, len, "downlink");
 
-  if (len <= TAG_LEN || (frame[0] & FRAME_FROM_PLATFORM) == 0) {
+  if (len < 1 + TAG_CHARS || (frame[0] & FRAME_FROM_PLATFORM) == 0) {
     LOG_INF("Downlink tag none: not a platform frame");
     return;
   }
-  if (frame[0] == FRAME_SHADOW && len >= SHADOW_HEADER_LEN + TAG_LEN) {
+  /* The header and any payload lie between the type byte and the tag. */
+  body = len - 1 - TAG_CHARS;
+  used = header_number(&frame[1], body, ' ', &first);
+  if (used > 0) {
+    size_t rest = header_number(&frame[1 + used], body - used, '\n', &second);
+
+    header = rest > 0 ? used + rest : 0;
+  }
+
+  if (header == 0) {
+    LOG_INF("Platform frame 0x%02x without a header", frame[0]);
+  } else if (frame[0] == FRAME_SHADOW) {
     LOG_INF(
-        "SHADOW target_version %d, current_version %d, target_config %zu bytes",
-        (int)(int32_t)sys_get_le32(&frame[1]), (int)(int32_t)sys_get_le32(&frame[5]),
-        len - SHADOW_HEADER_LEN - TAG_LEN
+        "SHADOW target_version %u, current_version %u, target_config %zu bytes",
+        (unsigned int)first, (unsigned int)second, body - header
     );
-  } else if (frame[0] == FRAME_STATUS && len == STATUS_LEN) {
-    LOG_INF("STATUS %s, arg %u", status_name(frame[1]), (unsigned int)sys_get_le32(&frame[2]));
+  } else if (frame[0] == FRAME_STATUS && header == body) {
+    LOG_INF("STATUS %s, arg %u", status_name(first), (unsigned int)second);
   } else {
     LOG_INF("Platform frame of unknown type 0x%02x or length", frame[0]);
   }
@@ -321,6 +364,10 @@ static int frame_send(const struct shell* sh, const uint8_t* frame, size_t len) 
     return -errno;
   }
   LOG_INF("send(%zu bytes) returned %zd", len, ret);
+  /* HELLO carries the claim key, which stays off the console. */
+  if (frame[0] != FRAME_HELLO) {
+    LOG_HEXDUMP_INF(frame, len, "uplink");
+  }
 
   return 0;
 }
@@ -353,9 +400,9 @@ static int cmd_hello(const struct shell* sh, size_t argc, char** argv) {
     return -ENOENT;
   }
   tx_buf[0] = FRAME_HELLO;
-  memcpy(&tx_buf[1], claim_key, CLAIM_KEY_LEN);
+  (void)bin2hex(claim_key, CLAIM_KEY_LEN, (char*)&tx_buf[1], sizeof(tx_buf) - 1);
 
-  return frame_send(sh, tx_buf, 1 + CLAIM_KEY_LEN);
+  return frame_send(sh, tx_buf, 1 + 2 * CLAIM_KEY_LEN);
 }
 
 /* Each frame carries the next sequence number, so a burst shows which frames
