@@ -159,11 +159,14 @@ static void take_reading(void) {
 }
 
 void shadow_loop(void) {
-  int64_t next_ms = k_uptime_get();
   int taken = 0;
 
   /* The reply to HELLO carries the target, so this first pass costs no access of its own. */
   (void)shadow_sync();
+
+  /* HELLO was this hour's first radio access, so the first wake is a full interval after it. */
+  int64_t next_ms =
+      k_uptime_get() + (int64_t)applied.telemetry_interval * MSEC_PER_SEC / READINGS_PER_WAKE;
 
   while (1) {
     int64_t now = k_uptime_get();
