@@ -104,6 +104,7 @@ In order, with ``<...>`` standing for this board's own values::
   <inf> pigeon: NIDD: eDRX off
   <inf> pigeon: NIDD: Non-IP on CID 1, APN VZWSCEF
   <inf> main: Attaching over NB-IoT
+  <inf> pigeon: NIDD: radio connected
   <inf> pigeon: NIDD: network granted PSM, TAU <seconds> s, active time <seconds> s
   <inf> pigeon: NIDD: modem IMEI <imei>, the id this pigeon is registered under
   <inf> pigeon: NIDD: Non-IP PDN up on CID 1
@@ -111,6 +112,10 @@ In order, with ``<...>`` standing for this board's own values::
   <inf> pigeon: NIDD: sent HELLO, 33 bytes
   <inf> pigeon: NIDD: SHADOW <target> <current>, <n> config bytes
   <inf> shadow: Applied shadow v<target>: telemetry_interval=<seconds>
+
+On modem firmware older than mfw_nrf91x1 2.0.1, such as the nRF9160's
+mfw 1.3.7, ``NIDD: this modem refuses SO_KEEPOPEN: -22`` comes once before
+the socket opens. Nothing depends on that option.
 
 When the platform holds an older version than the target, the report follows
 on the same connection, then its confirmation and the release::
