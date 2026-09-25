@@ -25,12 +25,16 @@ What you need
 - A Circuit Dojo nRF9160 Feather. Not the nRF9151 Feather: Verizon serves NIDD
   only to modules it supports on its network, and the nRF9151 is not one, so
   the build refuses that board.
-- A Verizon SIM on the NIDD price plan, with NB-IoT coverage. NIDD is enabled
-  per line in ThingSpace, and the line must not send until ThingSpace reports
-  ``ConfigCreated`` for it.
+- A Verizon SIM on the NIDD price plan, with NB-IoT coverage, provisioned on
+  the platform's own ThingSpace account. NIDD is not self-serve: the platform
+  takes NIDD traffic only from lines on its account, and only organizations
+  enabled for NIDD can create a ``Nidd`` pigeon, so a line on your own
+  ThingSpace account never reaches it. Contact PidgeIoT before ordering a SIM.
+  The line must not send until ThingSpace reports ``ConfigCreated`` for it.
 - A pigeon on the platform whose connector is ``Nidd``, created with the
-  modem's IMEI. The sample logs the IMEI at boot (``NIDD: modem IMEI``), so a
-  first boot without a pigeon is one way to read it.
+  modem's IMEI in an organization enabled for NIDD. The sample logs the IMEI
+  at boot (``NIDD: modem IMEI``), so a first boot without a pigeon is one way
+  to read it.
 - The pigeon's claim key: 32 lowercase hex characters, returned once when the
   pigeon is created and again at every token refresh.
 - A signing key for the build, which includes MCUboot. Generate one with

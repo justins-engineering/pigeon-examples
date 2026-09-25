@@ -27,7 +27,8 @@ The board targets behind those columns:
 - `circuitdojo_feather/nrf9160/ns` and `circuitdojo_feather_nrf9151/nrf9151/ns`, the Circuit Dojo
   cellular Feathers. Both need a SIM with LTE-M data. The nRF9151 board definition is out of tree,
   under `samples/boards`, and needs no flag on the command line. `nidd_init` needs a Verizon NB-IoT
-  SIM on the NIDD plan instead of LTE-M data.
+  SIM on the NIDD plan instead of LTE-M data, and NIDD is not self-serve: the line has to be on the
+  platform's own ThingSpace account, for an organization enabled for NIDD (see its README).
 - `esp32c6_devkitc/esp32c6/hpcore`, on a 2.4 GHz WiFi network. See [docs/esp32c6.md](docs/esp32c6.md).
 - `native_sim/native/64`, on the build host, using its own sockets. Nothing to flash and no
   hardware to own, which makes it the fastest way to watch a sample talk to the platform.
