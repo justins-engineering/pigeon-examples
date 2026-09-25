@@ -14,7 +14,8 @@ LOG_MODULE_REGISTER(shadow);
 /* The carrier asks for at most four radio accesses an hour, uplink and downlink together, so a
  * wake comes no more often than every 15 minutes. */
 #define WAKE_MIN_SEC 900
-/* Under CONFIG_PIGEON_TELEMETRY_BATCH_DEPTH, so no reading is dropped to make room. */
+/* Under CONFIG_PIGEON_TELEMETRY_BATCH_DEPTH, so no reading is dropped to make room while every
+ * wake delivers. */
 #define READINGS_PER_WAKE 4
 
 /* Signalled from the library's receive thread, so a pushed shadow is applied and reported while

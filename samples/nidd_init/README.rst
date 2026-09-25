@@ -9,15 +9,17 @@ The SIM authenticates the device to the carrier, and a claim key built into the
 firmware binds it to its pigeon and verifies every frame the platform sends.
 
 At boot the device claims its pigeon with ``HELLO``, and the reply carries the
-pigeon's target shadow, which the sample applies and reports. From then on it
+pigeon's target shadow, which the sample applies, and reports when the platform
+holds an older version. From then on it
 takes a reading every quarter of its wake interval and sends the four as one
 frame at each wake. A shadow the platform pushes, or owes the device, is applied
 and reported on the connection it arrived on.
 
 The lesson is in ``src/shadow.c``. ``src/main.c`` shows the order the modem
 needs: the modem library, then ``pigeon_init()`` while the modem is still
-offline (the PDP contexts, PSM and eDRX can only be written then), then the
-NB-IoT attach, then ``pigeon_nidd_start()``.
+offline (the Non-IP context must exist before the attach, and PSM and eDRX are
+written so the attach request carries them), then the NB-IoT attach, then
+``pigeon_nidd_start()``.
 
 What you need
 -------------
@@ -60,7 +62,10 @@ The radio budget
 
 Verizon asks that a device make at most four radio accesses an hour, uplink and
 downlink together. Keeping to that is the application's job: the library sends
-only what the application asks for, plus ``HELLO`` at boot.
+only what the application asks for, plus ``HELLO`` at boot. Beyond that it
+sends ``HELLO`` again when one drew no reply or the platform asks for it, and
+repeats a report the platform lost, each on a connection that is up anyway, so
+neither costs a radio access of its own.
 
 - The device wakes every ``telemetry_interval`` seconds of its shadow, 1200 until
   the shadow sets it, and never more often than every 900 seconds: a shorter
@@ -127,6 +132,9 @@ Troubleshooting
 - The build fails naming ``CONFIG_PIGEON_NIDD_CLAIM_KEY``: the key is missing
   from ``prj.local.conf`` or is not 32 characters. Naming the network mode: the
   build must stay NB-IoT.
+- ``CONFIG_PIGEON_NIDD_CLAIM_KEY must be 32 lowercase hex characters`` at boot,
+  and the modem powers off: the key has the right length but is not lowercase
+  hex. Paste it exactly as the dashboard shows it.
 - ``NIDD: claim key refused``: the firmware carries an old key, usually after a
   token refresh. Billable sends stop until the next boot; rebuild with the
   pigeon's current key.
@@ -138,7 +146,8 @@ Troubleshooting
 - No attach for half an hour after a run of resets: the modem's reset-loop
   protection. Let the device power its modem off before a reset or a reflash,
   as the sample does before every reboot.
-- ``NIDD: PSM request failed``: the modem refused the requested timers; see
+- ``NIDD: PSM request failed``: the modem refused the requested timers, and
+  the library turned PSM off so that a push can still reach the device; see
   ``CONFIG_LTE_PSM_REQ_RPTAU`` and ``CONFIG_LTE_PSM_REQ_RAT`` in ``prj.conf``.
 
 Next steps
