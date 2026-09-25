@@ -48,6 +48,9 @@ static struct app_config applied = {.telemetry_interval = 1200};
 static int32_t applied_version = -1;
 /* The applied version's config asked for a reboot. */
 static bool reboot_asked;
+/* Reported, but not yet confirmed: reported again only at the next wake, since an event
+ * already queued would otherwise start another pass at once and spend a radio access on it. */
+static int32_t unconfirmed_version = -1;
 
 /* Buffered readings would be lost with the RAM holding them, and the modem is powered off
  * first so the next boot can attach at once. */
@@ -109,7 +112,7 @@ int shadow_sync(void) {
     }
   }
 
-  if (applied_version <= doc.current_version) {
+  if (applied_version <= doc.current_version || applied_version == unconfirmed_version) {
     return 0;
   }
 
@@ -119,6 +122,7 @@ int shadow_sync(void) {
   err = pigeon_shadow_report(applied_version, report);
 
   if (err == -ETIMEDOUT) {
+    unconfirmed_version = applied_version;
     LOG_WRN("Shadow v%d report unconfirmed: reporting again at the next wake", applied_version);
     return 0;
   }
@@ -189,6 +193,7 @@ void shadow_loop(void) {
     /* The wake: one frame carries the four readings, and anything the platform owes this
      * device comes back on the connection that frame opened. */
     taken = 0;
+    unconfirmed_version = -1;
 
     int err = pigeon_telemetry_flush_now();
 

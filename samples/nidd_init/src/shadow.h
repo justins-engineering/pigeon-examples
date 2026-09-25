@@ -15,7 +15,7 @@ void shadow_event_cb(enum pigeon_event ev, const struct pigeon_shadow_doc* shado
 
 /** Applies target_config if the platform has moved past what this boot
  *  applied, and reports the applied version while the platform holds an older
- *  one.
+ *  one; a report that went unconfirmed is sent again at the next wake.
  *  @return 0 whether or not an update was applied, negative when no shadow is
  *  available. */
 int shadow_sync(void);
