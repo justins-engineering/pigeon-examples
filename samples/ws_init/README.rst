@@ -36,7 +36,7 @@ Configure
 ---------
 
 Write ``samples/ws_init/prj.local.conf``; it is git-ignored and merged on top
-of every other configuration file::
+of every other configuration file but the board's own ``.local.conf`` below::
 
   CONFIG_PIGEON_ENDPOINT="https://<platform-host>/device/pigeons/<pigeon-id>"
   CONFIG_PIGEON_TOKEN="<device-bearer-token>"
@@ -139,9 +139,7 @@ The console messages to look for, in the order a healthy boot produces them:
 
 - ``Bringing network interface up``, then ``Connecting to the network``, then
   ``Network connected``. A Feather provisions the CA into the modem first and
-  logs ``Provisioning CA certificate, sec_tag 43`` before any of it. A tag's
-  first provision logs two ``modem_key_mgmt: Key not found`` warnings ahead of
-  that, from the installer clearing a tag that holds nothing yet.
+  logs ``Provisioning CA certificate, sec_tag 43`` before any of it.
 - ``Pigeon tracking instance ready``, and the endpoint the transport resolved
   to. A wrong endpoint is visible here rather than three failures later.
 - ``WS: worker thread started``. The channel is opened by its own thread, so
@@ -180,13 +178,15 @@ Troubleshooting
 - ``401`` on every request and ``WS: upgrade handshake failed: -113``
   together: the token was refreshed after this build, and both surfaces
   authenticate with it. Rebuild with the current one.
-- ``WS: connect failed`` on its own while the shadow still syncs: the socket
-  is refused but HTTPS is not, so the loop degrades to polling. The most
-  common cause is another client already connected as this pigeon, since the
-  platform allows one socket per pigeon and closes the older one.
-- A push that never arrives while the socket is up: the dashboard write has
-  to change ``target_config``. An identical write leaves the shadow version
-  where it is and there is nothing to push.
+- ``WS: connect failed`` on its own while the shadow still syncs: the socket is
+  refused but HTTPS is not, so the loop degrades to polling.
+- ``WS: server closed the connection`` over and over: another client is
+  connected as this pigeon. The platform allows one socket per pigeon and
+  closes the older one, so the two take turns.
+- A push that arrives and changes nothing: the dashboard write has to change
+  ``target_config``. An identical write is still pushed, but it leaves the
+  shadow version where it is, so the device logs ``Shadow already converged``
+  and applies nothing.
 - A Feather that will not attach for half an hour: the modem refuses to
   attach after repeated ungraceful resets. Let the device power the modem off
   (a shadow ``reboot`` does) instead of resetting it mid-attach.
