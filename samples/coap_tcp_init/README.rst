@@ -8,9 +8,10 @@ bearer token is compiled in. Start from this sample where a stream socket is
 the better fit: a device behind a middlebox that drops UDP, or one already
 holding a TCP connection open for other reasons.
 
-Every exchange opens its own TLS session, so a poll costs three handshakes.
-A battery device that sleeps between reports belongs on ``coap_dtls_init``
-instead, which keeps one DTLS session alive across them.
+Every exchange opens its own TLS session, so a poll costs two handshakes, and a
+third when it reports a change back. A battery device that sleeps between
+reports belongs on ``coap_dtls_init`` instead, which keeps one DTLS session
+alive across them.
 
 The lesson is in ``src/shadow.c``. Board bring-up lives in ``../common/net``,
 behind ``net_connect()`` and ``net_disconnect()``, so ``main.c`` reads the
@@ -34,8 +35,9 @@ What you need
 Configure
 ---------
 
-Write ``samples/coap_tcp_init/prj.local.conf``; it is git-ignored and merged
-on top of every other configuration file::
+Write ``samples/coap_tcp_init/prj.local.conf``; it is git-ignored and merged on
+top of every other configuration file but the board's own ``.local.conf``
+below::
 
   CONFIG_PIGEON_ENDPOINT="coaps+tcp://<coap-host>/device/pigeons/<pigeon-id>"
   CONFIG_PIGEON_COAP_TLS_PSK_IDENTITY="<psk-identity>"
@@ -136,6 +138,10 @@ interval::
   <inf> shadow: Reported current_config back to platform at v3
   <inf> shadow: Next shadow poll in 15 s
 
+native_sim also prints ``WARNING: Using a test - not safe - entropy source``
+ahead of the banner, since it has no hardware random source, and two
+``nsos_sockets`` lines while the interface comes up. Both are expected.
+
 A Feather writes the key into the modem before the interface comes up, and
 logs ``Powering off modem`` before any reboot. Once the shadow has converged,
 later polls log ``Shadow already converged at version N; nothing to apply``
@@ -159,7 +165,8 @@ Troubleshooting
 - A Feather build that overflows its slot: the application already fills most
   of the non-secure partition, so another subsystem may not fit. Copy this
   board's ``.overlay`` from ``../https_init/boards`` to take back the space
-  TF-M leaves unused.
+  TF-M leaves unused. On the nRF9160 that overlay also runs the console at
+  1000000 baud.
 - native_sim logs one ``Network disconnected`` before ``Network connected``:
   the simulated interface reports its state before it has an address.
 
