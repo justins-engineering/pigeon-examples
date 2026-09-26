@@ -17,6 +17,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/net/tls_credentials.h>
+#include <zephyr/random/random.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/util.h>
 
@@ -406,7 +407,9 @@ static int cmd_hello(const struct shell* sh, size_t argc, char** argv) {
 }
 
 /* Each frame carries the next sequence number, so a burst shows which frames
- * were lost on the way. */
+ * were lost on the way. The frame opens with a send sequence, which the
+ * platform uses to store a frame the carrier delivers twice only once; a random
+ * one serves the probe, whose frames only have to differ. */
 static int cmd_telemetry(const struct shell* sh, size_t argc, char** argv) {
   static unsigned int seq;
   int len;
@@ -417,8 +420,8 @@ static int cmd_telemetry(const struct shell* sh, size_t argc, char** argv) {
   seq++;
   tx_buf[0] = FRAME_TELEMETRY;
   len = snprintf(
-      (char*)&tx_buf[1], sizeof(tx_buf) - 1, "{\"probe_seq\":\"%u\",\"uptime_s\":\"%u\"}", seq,
-      (unsigned int)(k_uptime_get() / MSEC_PER_SEC)
+      (char*)&tx_buf[1], sizeof(tx_buf) - 1, "%u\n{\"probe_seq\":\"%u\",\"uptime_s\":\"%u\"}",
+      (unsigned int)sys_rand32_get(), seq, (unsigned int)(k_uptime_get() / MSEC_PER_SEC)
   );
   LOG_INF("TELEMETRY probe_seq %u", seq);
 

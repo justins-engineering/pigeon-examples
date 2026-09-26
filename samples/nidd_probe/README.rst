@@ -105,9 +105,11 @@ Shell commands
   errno on failure.
 - ``nidd hello``: sends HELLO, the type byte 0x04 followed by the claim key as
   32 lowercase hex characters.
-- ``nidd telemetry``: sends TELEMETRY, the type byte 0x01 followed by a flat
-  JSON body with two keys: ``probe_seq``, which counts up from 1 at each send,
-  so a burst shows which frames were lost, and ``uptime_s``.
+- ``nidd telemetry``: sends TELEMETRY, the type byte 0x01, a send sequence in
+  decimal and a newline, then a flat JSON body with two keys: ``probe_seq``,
+  which counts up from 1 at each send, so a burst shows which frames were
+  lost, and ``uptime_s``. The platform refuses a TELEMETRY frame without the
+  sequence.
 - ``nidd report <version>``: sends SHADOW_REPORT, the type byte 0x02 followed
   by ``{"current_config":{},"current_version":<version>}``. The platform judges
   convergence by version alone, and a received config may not fit a frame.
