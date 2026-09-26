@@ -45,8 +45,8 @@ What you need
 Configure
 ---------
 
-Write ``samples/mqtt_init/prj.local.conf``; it is git-ignored and merged on
-top of every other configuration file::
+Write ``samples/mqtt_init/prj.local.conf``; it is git-ignored and merged on top
+of every other configuration file but the board's own ``.local.conf`` below::
 
   CONFIG_PIGEON_ENDPOINT="mqtts://mqtt.pidgeiot.com:8883"
   CONFIG_MQTT_INIT_PIGEON_ID="<64 hex chars>"
@@ -166,24 +166,32 @@ A first session, here on native_sim against a local broker::
   <inf> pigeon: Queued telemetry: uptime_s=1
   <inf> pigeon: Queued telemetry: poll_count=1
   <inf> pigeon: Flushed 3 telemetry key(s) in one report (51 bytes)
+  <inf> shadow: Shadow v1: telemetry_interval 60 -> 15
   <inf> shadow: Applied shadow v1: log=false telemetry_interval=15
   <inf> pigeon: Target shadow received: target_version 1
   <inf> shadow: Reported current_config back to platform at v1
   <inf> shadow: Next pass in <=15 s (or sooner on a pushed shadow)
 
+native_sim also prints ``WARNING: Using a test - not safe - entropy source``
+ahead of the banner, since it has no hardware random source, and two
+``nsos_sockets`` lines while the interface comes up. Both are expected.
+
 ``MQTT TLS ciphersuite`` is read off the socket rather than assumed: what a
-constrained build offers comes from its PSA wants, and which one is used is
-the broker's choice among them; a certificate session lands on an ECDHE-ECDSA
-suite instead. A Feather adds ``Provisioning CA certificate, sec_tag 47``
-before the interface comes up on a certificate build, and ``Powering off
-modem`` before any reboot. A tag's first provision logs two
-``modem_key_mgmt: Key not found`` warnings ahead of it, from the installer
-clearing a tag that holds nothing yet.
+constrained build offers comes from its PSA wants, and which one is used is the
+broker's choice among them; a certificate session lands on an ECDHE-ECDSA suite
+instead. A Feather adds ``Provisioning CA certificate, sec_tag 47`` before the
+interface comes up on a certificate build, and ``Powering off modem`` before
+any reboot.
 
 Save a change on the dashboard and the device applies it without waiting out
 its interval::
 
   <inf> pigeon: Target shadow received: target_version 2
+  <inf> shadow: Shadow: target_version=2 current_version=1 updated_at=1790396579
+  <inf> pigeon: Queued telemetry: uptime_s=5
+  <inf> pigeon: Queued telemetry: poll_count=3
+  <inf> pigeon: Flushed 2 telemetry key(s) in one report (33 bytes)
+  <inf> shadow: Shadow v2: log false -> true
   <inf> shadow: Shadow v2: telemetry_interval 15 -> 20
   <inf> shadow: Applied shadow v2: log=true telemetry_interval=20
   <inf> shadow: Reported current_config back to platform at v2
@@ -198,13 +206,14 @@ Troubleshooting
 - The session connects and is closed immediately: the pigeon id, the CONNECT
   username and the PSK identity must all be the same string, and the broker
   refuses a session where they are not.
-- ``MQTT connect ... failed on every resolved address``: the endpoint carries
-  a path. This one names the broker, not a pigeon.
+- ``CONFIG_PIGEON_ENDPOINT carries a path``: this endpoint names the broker,
+  not a pigeon, so it ends at the port. Copy it as the pigeon's detail page
+  gives it.
 - A certificate build that fails the handshake against a local broker: pass
   that broker's own CA as ``-DPIGEON_MQTT_CA_FILE``. The default anchors the
   public chain only.
-- Nothing arrives on the platform although the session is up: the pigeon's
-  connector is not MQTT, so the broker has nothing to bridge onto.
+- Sessions that come up and drop in turn: two devices are using the same pigeon
+  id, and the platform keeps one session per pigeon.
 - A Feather that will not attach for half an hour: the modem refuses to
   attach after repeated ungraceful resets. Let the device power the modem off
   (a shadow ``reboot`` does) instead of resetting it mid-attach.
