@@ -2,7 +2,9 @@
 
 `https_init` carries the reference wiring on every board that boots through MCUboot, and
 `wifi_init` has an opt-in firmware-update build. `native_sim` has no bootloader and no second slot,
-so firmware updates are off there.
+so firmware updates are off there. `nidd_init` boots through MCUboot but leaves them off: over NIDD
+the image still comes by HTTPS, on an IP connection beside the Non-IP one, which needs a SIM plan
+with IP data to spare and the pigeon's device token. `pigeon`'s README describes that build.
 
 ## How an update runs
 
