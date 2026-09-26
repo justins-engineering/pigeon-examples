@@ -29,7 +29,8 @@ Configure
 ---------
 
 Write ``samples/coap_dtls_init/prj.local.conf``; it is git-ignored and merged
-on top of every other configuration file::
+on top of every other configuration file but the board's own ``.local.conf``
+below::
 
   CONFIG_PIGEON_ENDPOINT="coaps://coap.pidgeiot.com/device/pigeons/<pigeon-id>"
   CONFIG_PIGEON_COAP_TLS_PSK_IDENTITY="<psk-identity>"
@@ -137,6 +138,10 @@ A first poll against the platform, here on native_sim::
   <inf> shadow: Shadow already converged at version 3; nothing to apply
   <inf> shadow: Next shadow poll in 60 s
 
+native_sim also prints ``WARNING: Using a test - not safe - entropy source``
+ahead of the banner, since it has no hardware random source, and two
+``nsos_sockets`` lines while the interface comes up. Both are expected.
+
 ``0xc0a8`` is ``TLS_PSK_WITH_AES_128_CCM_8``, the constrained-device suite this
 transport aims at. A shadow whose target is ahead of what the device runs logs
 ``Applied shadow vN`` and ``Reported current_config back to platform at vN``
@@ -153,7 +158,8 @@ Troubleshooting
 - ``DTLS CID unsupported on this stack``: modem firmware older than
   mfw_nrf9160 v1.3.5 has no Connection ID, and the session runs without it.
 - A handshake that fails before any request: the PSK was refreshed after this
-  build, or the endpoint names a pigeon whose connector is not CoAP.
+  build, or the PSK identity names a pigeon on the HTTPS connector, which has
+  no pre-shared key.
 - A Feather logging ``Not allowed when LTE connection is active``: the modem's
   credential store only accepts writes while it is offline, which is why
   ``main.c`` provisions the PSK before ``net_connect()``.
