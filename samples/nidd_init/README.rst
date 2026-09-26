@@ -147,13 +147,27 @@ Troubleshooting
   sends are held for the time the notice names, and the newest readings stay
   buffered meanwhile.
 - ``NIDD: dropped a <n>-byte frame whose tag did not verify``: a frame signed
-  with a key other than the one built in, which the device ignores.
+  with a key other than the one built in, which the device ignores. After a
+  token refresh it is the platform's own notice, signed with the new key: the
+  platform stores nothing this firmware sends, and a restart on it ends in
+  ``NIDD: claim key refused``. Rebuild with the new key.
+- ``NIDD: dropped SHADOW v<n>: its <n>-byte config exceeds
+  CONFIG_PIGEON_SHADOW_CONFIG_MAX - 1``: the dashboard saved a target larger
+  than this build keeps, 319 bytes by default. The device stays on the target
+  it has, and every wake draws the same frame again until a smaller save
+  replaces it.
+- ``Shadow v<n> report unconfirmed: reporting again at the next wake``: the
+  platform's confirmation did not arrive within
+  ``CONFIG_PIGEON_NIDD_REPLY_WAIT_SEC``. One that arrives later still counts;
+  if none does, the next wake reports again, on the connection it opens anyway.
 - No attach for half an hour after a run of resets: the modem's reset-loop
   protection. Let the device power its modem off before a reset or a reflash,
   as the sample does before every reboot.
 - ``NIDD: PSM request failed``: the modem refused the requested timers, and
   the library turned PSM off so that a push can still reach the device; see
   ``CONFIG_LTE_PSM_REQ_RPTAU`` and ``CONFIG_LTE_PSM_REQ_RAT`` in ``prj.conf``.
+- ``NIDD: network did not grant PSM`` as the modem powers off or leaves the
+  network: with no network there is no grant to report. Nothing was refused.
 
 Next steps
 ----------
