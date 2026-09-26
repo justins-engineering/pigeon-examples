@@ -120,9 +120,10 @@ CONFIG_PIGEON_ENDPOINT="https://api.pidgeiot.com/device/pigeons/<pigeon-id>"
 CONFIG_PIGEON_TOKEN="<device-bearer-token>"
 ```
 
-The CoAP and MQTT samples take a pre-shared key here instead of, or beside, the token; each
-sample's own README names the keys it wants. All of them come back once, from the pigeon's create or
-token-refresh response, and refreshing revokes what it replaces.
+The CoAP and MQTT samples take a pre-shared key here instead of, or beside, the token, and
+`nidd_init` takes only the pigeon's claim key, since its endpoint names the carrier's APN and is the
+same for every device; each sample's own README names the keys it wants. All of them come back
+once, from the pigeon's create or token-refresh response, and refreshing revokes what it replaces.
 
 WiFi credentials go in `samples/<sample>/boards/esp32c6_devkitc_hpcore.local.conf`, merged after
 `prj.local.conf`. Create the `boards/` directory if the sample does not ship one:
