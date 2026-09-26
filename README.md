@@ -1,9 +1,10 @@
 # pigeon-examples
 
 Zephyr sample applications for [`pigeon`](https://github.com/justins-engineering/pigeon), the
-PidgeIoT device client library. Every sample is a working device: it authenticates to the platform,
-syncs a device shadow, applies what the dashboard asked for, reports the result back, and sends
-telemetry. What separates them is the transport underneath and the one extra thing each one teaches.
+PidgeIoT device client library. Every sample but `shadow_model` and `nidd_probe` is a working
+device: it authenticates to the platform, syncs a device shadow, applies what the dashboard asked
+for, reports the result back, and sends telemetry. What separates them is the transport underneath
+and the one extra thing each one teaches.
 
 Pick the sample whose transport matches the device you are building, copy it, and change the parts
 that are yours. Each has its own README with the exact commands for every board it runs on.
@@ -57,7 +58,7 @@ to flash the ESP32-C6.
 
 Two west manifests live in `samples/`, and each needs a topdir of its own because they vendor
 incompatible trees. `west.yml` is upstream Zephyr and is the default; `west-ncs.yml` is the nRF
-Connect SDK, which the Feathers need for the modem libraries and the TF-M targets.
+Connect SDK, which the Feathers need for the modem libraries.
 
 A clone is already a west workspace: `.west/config` ships with it, so there is no `west init` step
 and `west update` fetches the vendored trees straight away. The default topdir, for the ESP32-C6 and
