@@ -28,7 +28,8 @@ Configure
 ---------
 
 Write ``samples/https_init/prj.local.conf``; it is git-ignored and merged on
-top of every other configuration file::
+top of every other configuration file but the board's own ``.local.conf``
+below::
 
   CONFIG_PIGEON_ENDPOINT="https://api.pidgeiot.com/device/pigeons/<pigeon-id>"
   CONFIG_PIGEON_TOKEN="<device-bearer-token>"
@@ -63,8 +64,9 @@ The sample's own options, all in ``prj.conf`` unless noted:
   certificate in ``../common/cert/`` is installed under. Each sample pins its own,
   because the modem's credential store outlives a reflash.
 - ESP32-C6 only (``boards/esp32c6_devkitc_hpcore.conf``): 32 KiB download
-  chunks, download resume, a bounded attempt budget per firmware target and
-  reboot-on-fatal, the set that completes a download on that board.
+  chunks and reboot-on-fatal. Download resume and a bounded attempt budget per
+  firmware target are on for every MCUboot board, the Feathers through
+  ``boards/nrf91.conf``.
 
 ``shadow.c`` understands these ``target_config`` keys: ``log`` (bool,
 silences or restores logging), ``telemetry_interval`` (seconds between
@@ -131,12 +133,14 @@ A first poll against the platform, here on native_sim::
   <inf> shadow: Reported current_config back to platform at v1
   <inf> shadow: Next shadow poll in 60 s
 
-A Feather adds ``Provisioning CA certificate, sec_tag 42`` before the
-interface comes up, and ``Powering off modem`` before any reboot. A tag's
-first provision logs two ``modem_key_mgmt: Key not found`` warnings ahead of
-it, from the installer clearing a tag that holds nothing yet. Once the
-shadow has converged, later polls log ``Shadow already converged at version
-N; nothing to apply`` instead of applying and reporting; that is expected.
+native_sim also prints ``WARNING: Using a test - not safe - entropy source``
+ahead of the banner, since it has no hardware random source, and two
+``nsos_sockets`` lines while the interface comes up. Both are expected.
+
+A Feather adds ``Provisioning CA certificate, sec_tag 42`` before the interface
+comes up, and ``Powering off modem`` before any reboot. Once the shadow has
+converged, later polls log ``Shadow already converged at version N; nothing to
+apply`` instead of applying and reporting; that is expected.
 
 On the dashboard the pigeon shows as online, its telemetry carries
 ``reset_cause``, ``uptime_s`` and ``poll_count``, and the shadow's current
