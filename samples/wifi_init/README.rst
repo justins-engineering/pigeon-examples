@@ -31,8 +31,8 @@ What you need
 Configure
 ---------
 
-Write ``samples/wifi_init/prj.local.conf``; it is git-ignored and merged on
-top of every other configuration file::
+Write ``samples/wifi_init/prj.local.conf``; it is git-ignored and merged on top
+of every other configuration file but the board's own ``.local.conf`` below::
 
   CONFIG_PIGEON_ENDPOINT="https://api.pidgeiot.com/device/pigeons/<pigeon-id>"
   CONFIG_PIGEON_TOKEN="<device-bearer-token>"
@@ -123,7 +123,7 @@ A first poll against the platform, here on an ESP32-C6::
   <inf> net_connect: Joining stored WiFi network (attempt 1)
   <inf> net_wifi_mgmt: Connection requested
   <inf> net_dhcpv4: Received: 192.168.3.18
-  <inf> net_connect: Network connected, address assigned
+  <inf> net_connect: Network connected
   <inf> pigeon: Initializing Pigeon tracking instance: pigeon-wifi-sample
   <inf> pigeon: Transport mapped to secure HTTPS edge pipeline: https://<host>/device/pigeons/<pigeon-id>
   <inf> pigeon: Pigeon tracking instance ready: pigeon-wifi-sample
