@@ -1,8 +1,9 @@
 # Decoding uploaded device logs
 
-`CONFIG_PIGEON_LOG_UPLOAD` is on in `https_init`, `coap_dtls_init` and `mqtt_init`. A background
-ring buffer captures the device's own log output through Zephyr's dictionary-based logging and
-sends it to the platform in batches, authenticated the same way as telemetry and shadow reports.
+`CONFIG_PIGEON_LOG_UPLOAD` is on in `https_init`, `coap_dtls_init` and `mqtt_init`. NIDD carries
+no log upload, so `nidd_init` sends none. A background ring buffer captures the device's own log
+output through Zephyr's dictionary-based logging and sends it to the platform in batches,
+authenticated the same way as telemetry and shadow reports.
 
 The win is that format strings never ship in the firmware image or over the air. Each record on the
 wire is a source id, a level, a timestamp and packed arguments, so reading it back needs a lookup
