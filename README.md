@@ -38,6 +38,8 @@ and says so in every reading.
 
 One more sample is a bench tool rather than a device: [nidd_probe](samples/nidd_probe/README.rst)
 checks a carrier's Non-IP Data Delivery over NB-IoT on either Feather, with no platform involved.
+On Verizon it needs the nRF9160 Feather: Verizon serves NIDD only to modules it supports on its
+network, and the nRF9151 is not one.
 
 ## Prerequisites
 

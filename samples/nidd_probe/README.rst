@@ -25,7 +25,9 @@ reported and powers the modem off. The shell stays up for ``at`` commands.
 What you need
 -------------
 
-- A Circuit Dojo nRF9151 Feather or nRF9160 Feather.
+- A Circuit Dojo nRF9151 Feather or nRF9160 Feather. On Verizon, only the
+  nRF9160: Verizon serves NIDD only to modules it supports on its network,
+  and the nRF9151 is not one.
 - A SIM with the carrier's NIDD plan, and NB-IoT coverage. Verizon delivers
   NIDD over NB-IoT only, through the APN ``VZWSCEF``.
 - A signing key for the build, which includes MCUboot. Generate one with
@@ -58,8 +60,8 @@ Build and flash
 
 From the ``west-ncs.yml`` topdir, with the Python environment active.
 
-nRF9151 Feather, over its onboard CMSIS-DAP probe, whose CDC-ACM port is also
-the console::
+nRF9151 Feather, not on a Verizon line, over its onboard CMSIS-DAP probe,
+whose CDC-ACM port is also the console::
 
   west build -p always -d build -b circuitdojo_feather_nrf9151/nrf9151/ns samples/nidd_probe
   west flash -d build -r probe-rs
