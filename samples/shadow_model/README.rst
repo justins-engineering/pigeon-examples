@@ -56,7 +56,8 @@ CMSIS-DAP probe, whose CDC-ACM port is also the console::
 What you should see
 -------------------
 
-The same lines on every board; this is native_sim::
+The same log lines on every board, after that board's own boot output; this is
+native_sim::
 
   *** Booting Zephyr OS build v4.4.1 ***
   <inf> pigeon: Initializing Pigeon tracking instance: demo-pigeon-0003
@@ -70,8 +71,6 @@ Nothing reaches the platform, so the dashboard shows no change.
 Troubleshooting
 ---------------
 
-- ``No board named 'circuitdojo_feather_nrf9151'``: the Feathers build from
-  the ``west-ncs.yml`` topdir, not the default one.
 - The endpoint in the transport line is empty because no connector is
   configured; that is expected here.
 
