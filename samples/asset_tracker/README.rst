@@ -35,7 +35,8 @@ Configure
 ---------
 
 Write ``samples/asset_tracker/prj.local.conf``; it is git-ignored and merged on
-top of every other configuration file::
+top of every other configuration file but the board's own ``.local.conf``
+below::
 
   CONFIG_PIGEON_ENDPOINT="https://api.pidgeiot.com/device/pigeons/<pigeon-id>"
   CONFIG_PIGEON_TOKEN="<device-bearer-token>"
@@ -117,9 +118,14 @@ A first poll against the platform, here on native_sim::
   *** Booting Zephyr OS build v4.4.1 ***
   <wrn> main: Simulated position: every fix this build reports is fabricated and carries gps_fix_quality=2
   <inf> net_connect: Bringing network interface up
+  <inf> net_connect: Connecting to the network
   <inf> net_connect: Network connected
   <inf> pigeon: Initializing Pigeon tracking instance: asset-tracker-sample
+  <inf> pigeon: Transport mapped to secure HTTPS edge pipeline: https://<host>/device/pigeons/<pigeon-id>
+  <inf> pigeon: Pigeon tracking instance ready: asset-tracker-sample
   <inf> pigeon: Queued telemetry: reset_cause=8
+  <wrn> pigeon_watchdog: no 'watchdog0' devicetree alias on this board -- falling back to a software-only task watchdog (see CONFIG_PIGEON_WATCHDOG's help: this cannot recover from a fully-wedged, interrupts-disabled hang, only a real hardware watchdog can)
+  <inf> pigeon_watchdog: Wedge-recovery watchdog armed: 900s timeout, SOFTWARE-ONLY (no hardware fallback)
   <inf> gnss: Simulated track: a 50 m circuit around 45.523064,-122.676483, one lap every 300 s
   <inf> shadow: Shadow fetched: target_version=5 current_version=5 updated_at=1784661124
   <inf> pigeon: Queued telemetry: uptime_s=1
@@ -135,10 +141,14 @@ A first poll against the platform, here on native_sim::
   <inf> shadow: Shadow already converged at version 5; nothing to apply
   <inf> shadow: Next shadow poll in 60 s
 
+native_sim also prints ``WARNING: Using a test - not safe - entropy source``
+ahead of the banner, since it has no hardware random source, and two
+``nsos_sockets`` lines while the interface comes up. Both are expected.
+native_sim has no hardware watchdog, so the library warns once and falls back
+to a software one; that is expected there.
+
 A Feather adds ``Provisioning CA certificate, sec_tag 44`` before the interface
-comes up, and logs ``GNSS started`` instead of the simulated track. A tag's
-first provision logs two ``modem_key_mgmt: Key not found`` warnings ahead of it,
-from the installer clearing a tag that holds nothing yet. Until it
+comes up, and logs ``GNSS started`` instead of the simulated track. Until it
 fixes, each poll reports ``gps_fix_quality=0`` with the satellites it can see
 and no position, which is what a device that has not found the sky looks like.
 
